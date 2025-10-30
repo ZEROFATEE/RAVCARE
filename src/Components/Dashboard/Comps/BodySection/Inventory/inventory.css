@@ -1,0 +1,306 @@
+.invDiv {
+  font-family: "Inter", sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 2rem;
+}
+
+.container {
+  width: 950px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 7px 50px #dfcdcd;
+  padding: 2rem;
+  text-align: center;
+}
+
+h2 {
+  color: #651126;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+}
+
+/* Tabs */
+.tabButtons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.tabButtons button {
+  padding: 0.6rem 1.5rem;
+  background: #f5f5f5;
+  color: #651126;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.3s ease;
+}
+
+.tabButtons button:hover,
+.tabButtons .activeTab {
+  background: #bb4d4d;
+  color: white;
+}
+
+/* Content */
+.tabContent {
+  background: #fafafa;
+  padding: 1.5rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  margin-top: 1rem;
+}
+
+.tabContent h3 {
+  color: #651126;
+  font-weight: 600;
+}
+
+.doseBtn {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: #651126;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.3s ease;
+}
+
+.doseBtn:hover {
+  background: #bb4d4d;
+}
+
+/* Add Stock Button */
+.createBtn {
+  padding: 0.5rem 1rem;
+  background: #f5f5f5;
+  color: #651126;
+  border-radius: 10px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: 0.3s ease;
+}
+
+.createBtn:hover {
+  background: #bb4d4d;
+  color: white;
+}
+
+.actionButtons {
+  margin-top: 1rem;
+}
+
+/* Status Text */
+.spoiledText {
+  color: #bb4d4d;
+  font-weight: 600;
+}
+
+.completeText {
+  color: #2e8b57;
+  font-weight: 600;
+}
+
+/* Popup */
+.popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.popupForm {
+  background: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.popupActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.cancelBtn {
+  background: #f5f5f5;
+  color: #651126;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.cancelBtn:hover {
+  background: #bb4d4d;
+  color: white;
+}
+.vaccineGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin: 20px 0;
+}
+
+/* Added responsive layout for smaller screens */
+@media (max-width: 768px) {
+  .vaccineGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.vaccineCard {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+  background: #f9f9f9;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.vaccineCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.vaccineHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.vaccineHeader h4 {
+  margin: 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.category {
+  font-size: 12px;
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.vaccineInfo {
+  margin: 12px 0;
+}
+
+.stockAmount {
+  font-size: 24px;
+  font-weight: bold;
+  color: #651126 
+  margin: 0;
+}
+
+.vaccineActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.doseBtn {
+  flex: 1;
+  padding: 8px 12px;
+  background: #e19297 ;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.doseBtn:hover:not(:disabled) { 
+  background: #651126 ;
+}
+
+.doseBtn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Added scrollable container for logs - only logs scroll, not entire page */
+.logsScrollContainer {
+  max-height: 500px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+
+.logsContainer {
+  margin-top: 20px;
+}
+
+.logsTable {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.logsTable thead {
+  background: #f5f5f5;
+  border-bottom: 2px solid #ddd;
+  position: sticky;
+  top: 0;
+}
+
+.logsTable th {
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+}
+
+.logsTable td {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.logsTable tbody tr:hover {
+  background: #f9f9f9;
+}
+
+.formGroup {
+  margin-bottom: 16px;
+}
+
+.formGroup label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: #333;
+}
+
+.formGroup select,
+.formGroup input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.formGroup select:focus,
+.formGroup input:focus {
+  outline: none;
+  border-color: #4caf50;
+  box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
+}

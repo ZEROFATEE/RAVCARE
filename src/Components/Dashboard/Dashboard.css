@@ -1,0 +1,33 @@
+.dashboard {
+
+ 
+    position: relative;
+    width: 95vw;
+    height: 95vh;
+    display: flex;
+  align-items: stretch;     /* sidebar + content stretch full height */
+    justify-content: flex-start;
+    background: #ffe7e7;
+    overflow: hidden;
+    border-radius: 1rem;
+    box-shadow: 2px 2px 8px gray;
+
+.sideBar {
+ width: 250px;
+  min-width: 250px;
+  max-width: 250px;
+  flex-shrink: 0;
+  background: #fff;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+}
+
+
+.mainContent {
+
+    flex: 1;   /* take up the remaining space */
+    padding: 20px;
+    overflow-y: auto;
+}

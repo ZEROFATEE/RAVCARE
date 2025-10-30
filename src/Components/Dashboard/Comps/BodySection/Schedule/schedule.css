@@ -1,0 +1,295 @@
+.schedule-layout {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  height: 710px;
+  background: #fff;
+  border-radius: 12px;
+}
+
+/* LEFT PANEL */
+.schedule-left {
+  flex: 1;
+  background: #ffe4e6;
+  border-radius: 16px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Center the clock vertically */
+.left-center {
+  text-align: center;
+  margin: auto 0;
+}
+.today-title {
+  color: #651126;
+  font-weight: 700;
+  font-size: 1.6rem;
+}
+.clock-time {
+  font-size: 1.5rem;
+  color: #651126;
+  font-weight: bold;
+  margin-top: 0.5rem;
+}
+
+/* Appointment Tabs */
+.appointments {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.tab-btn {
+  flex: 1;
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem;
+  font-weight: bold;
+  cursor: pointer;
+  background: #651126;
+  color: white;
+  transition: 0.3s ease;
+}
+.tab-btn:hover,
+.tab-btn.active {
+  background: #8b2a3a;
+  transform: scale(1.05);
+}
+.tab-btn.finished {
+  background: #8b2a3a;
+}
+.tab-btn.missed {
+  background: #bb4d68;
+}
+
+/* Appointment List */
+.appointment-list {
+  flex: 1;
+  background: #fff;
+  border-radius: 8px;
+  padding: 12px;
+  overflow-y: auto;
+}
+.appointment-list::-webkit-scrollbar {
+  width: 8px;
+}
+.appointment-list::-webkit-scrollbar-thumb {
+  background: #e19297;
+  border-radius: 6px;
+}
+.appointment-card {
+  background: #fff5f6;
+  border-radius: 10px;
+  padding: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+.appointment-card.finished {
+  border-left: 5px solid #651126;
+}
+.appointment-card.missed {
+  border-left: 5px solid #bb4d68;
+}
+
+/* RIGHT PANEL */
+.schedule-right {
+  flex: 2;
+  background: #fff5f6;
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Real-time clock above calendar */
+.calendar-top-clock {
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #651126;
+  margin-bottom: 10px;
+}
+
+/* Calendar Center */
+.calendar-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Priority Indicator moved below calendar */
+.priority-indicator {
+  display: flex;
+  justify-content: center;
+  gap: 0.8rem;
+  font-size: 0.9rem;
+  margin-top: 10px;
+}
+
+/* Calendar Tiles */
+.react-calendar__tile {
+  background: white;
+  color: #000;
+  border-radius: 10px;
+  padding: 18px 0;
+  transition: all 0.2s ease;
+}
+.react-calendar__tile--active {
+  background: #651126 !important;
+  color: white !important;
+}
+.react-calendar__tile--now {
+  background: #e19297 !important;
+  font-weight: bold;
+}
+
+/* Appointment Density Colors */
+.calendar-low {
+  background-color: #fbcfd2 !important;
+}
+.calendar-medium {
+  background-color: #e19297 !important;
+  color: white !important;
+}
+.calendar-high {
+  background-color: #651126 !important;
+  color: white !important;
+}
+
+/* Appointment Count Label */
+.appt-count {
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: #651126;
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+}
+
+/* Popup Styling */
+.popup {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+
+.view-modalPatient {
+  background: #fff;
+  border-radius: 12px;
+  padding: 2rem;
+  width: 420px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  color: #651126;
+  text-align: center;
+}
+
+.Closebtn button {
+  background: #bb4d4d;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 1rem;
+  cursor: pointer;
+  float: right;
+  transition: 0.3s;
+}
+.Closebtn button:hover {
+  background: #651126;
+}
+
+.Edit-Buttons {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.open-nested-btn,
+.open-patient-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #651126;
+  color: white;
+  font-weight: 600;
+  transition: 0.3s ease;
+}
+.open-nested-btn:hover,
+.open-patient-btn:hover {
+  background: #bb4d4d;
+}
+
+/* Nested Re-schedule Popup */
+.nested-popup {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.nested-content {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 350px;
+  text-align: center;
+  color: #651126;
+}
+
+.datetime-controls label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.datetime-controls input {
+  margin-top: 0.5rem;
+  padding: 0.4rem;
+  border: 1px solid #e36a72;
+  border-radius: 6px;
+}
+
+.nested-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+
+.back-btn,
+.save-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.3s ease;
+}
+
+.back-btn {
+  background: #f5f5f5;
+  color: #651126;
+}
+
+.save-btn {
+  background: #651126;
+  color: white;
+}
+
+.back-btn:hover {
+  background: #bb4d4d;
+  color: white;
+}
+.save-btn:hover {
+  background: #bb4d4d;
+}
+
