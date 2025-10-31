@@ -46,7 +46,7 @@ fn register_user(
     let conn = state.db.lock().unwrap();
     let hashed_password = hash(password, DEFAULT_COST).map_err(|e| e.to_string())?;
 
-    // Assign role automatically based on username pattern
+    
     let role = if username.to_lowercase().contains("admin") {
         "admin"
     } else if username.to_lowercase().contains("doctor") {
@@ -77,7 +77,7 @@ fn login_user(
 
     let conn = state.db.lock().unwrap();
 
-    // Select id, password_hash, and role
+    
     let mut stmt = conn
         .prepare("SELECT id, password_hash, role FROM users WHERE username = ?1")
         .map_err(|e| e.to_string())?;
@@ -90,7 +90,7 @@ fn login_user(
         .map_err(|e| e.to_string())?;
 
     if let Some((id, stored_hash, role)) = user_row {
-        // Verify password hash
+        
         if verify(&password, &stored_hash).unwrap_or(false) {
             Ok(serde_json::json!({
                 "success": true,
@@ -188,6 +188,7 @@ fn create_patient_cmd(patient: Patient) -> Result<serde_json::Value, String> {
     let conn = Connection::open(DB_PATH)
         .map_err(|e| format!("DB open failed: {}", e))?;
 
+        //ADDED THE MISSING VALUE ?20, IT NOW WORKS BUT NOW CODE DOESN'T APPEAR IN THE PATIENT.JSX (10-30 11:27PM)
     // Insert patient record
     conn.execute(
         "INSERT INTO patients (
@@ -195,9 +196,11 @@ fn create_patient_cmd(patient: Patient) -> Result<serde_json::Value, String> {
             age, gender, weight, contact_number, date_of_exposure,
             type_of_bite, site_of_bite, biting_animal, category,
             previous_anti_rabies_vaccine, prev_vacc,
-            allergies, ill_oper, assessment, status
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+            allergies, ill_oper, assessment, 
+            status
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         params![
+            //STATUS AND ?20
             patient.first_name,
             patient.last_name,
             patient.middle_name,
@@ -217,6 +220,7 @@ fn create_patient_cmd(patient: Patient) -> Result<serde_json::Value, String> {
             patient.allergies,
             patient.ill_oper,
             patient.assessment,
+            //ADDED CODE 
             patient.status.unwrap_or_else(|| "pending".to_string()),
         ],
     )
@@ -224,26 +228,21 @@ fn create_patient_cmd(patient: Patient) -> Result<serde_json::Value, String> {
 
     let patient_id = conn.last_insert_rowid();
 
-    // ✅ Create username (first+last name)
     let username = format!(
         "{}{}",
         patient.first_name.to_lowercase(),
         patient.last_name.to_lowercase()
     );
 
-    // ✅ Extract birth year safely
     let dob_str = patient.date_of_birth.as_deref().unwrap_or("0000-01-01");
     let birth_year = extract_birth_year(dob_str).unwrap_or("0000".to_string());
 
-    // ✅ Auto-generate password (e.g., 1994@Doe)
     let password_plain = format!("{}@{}", birth_year, patient.last_name);
 
-    // ✅ Encrypt and hash password
     let encrypted_password = encrypt_password(&password_plain, &secret_key)?;
     let password_hash = hash(&password_plain, bcrypt::DEFAULT_COST)
         .map_err(|e| format!("Hash failed: {}", e))?;
 
-    // ✅ Insert into musers
     conn.execute(
         "INSERT INTO musers (patient_id, username, password_hash, encrypted_password, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -292,11 +291,11 @@ fn get_patient_with_user(id: i64) -> Result<serde_json::Value, String> {
 
     let mut stmt = conn.prepare(
         "SELECT 
-            p.id, p.first_name, p.last_name, p.middle_name,
-            p.age, p.gender, p.contact_number, p.address, 
-            p.date_of_birth, p.weight, p.date_of_exposure,
-            p.prev_vacc, p.allergies, p.ill_oper, p.assessment,
-            u.username, u.encrypted_password
+            p.id, p.first_name, p.last_name, p.middle_name, p.age, p.gender,
+p.contact_number, p.address, p.date_of_birth, p.weight,
+p.date_of_exposure, p.prev_vacc, p.allergies, p.ill_oper,
+p.assessment, p.status, p.date_created, p.last_appointment,
+u.username, u.encrypted_password
         FROM patients p
         LEFT JOIN musers u ON p.id = u.patient_id
         WHERE p.id = ?1"
@@ -382,6 +381,7 @@ struct Appointment {
     pub day_seven_date: Option<String>,
     pub day_fourteen_date: Option<String>,
     pub day_thirty_date: Option<String>,
+    //ADDED CODE
     pub status: Option<String>,
 }
 
@@ -461,7 +461,7 @@ fn create_appointment(state: State<'_, AppState>, appointment: Appointment) -> R
         patient_id, schedule, type_of_bite, site_of_bite, biting_animal,
         category, previous_vaccine, prophylaxis_type, tetanus_toxoid,
         day_zero_date, day_three_date, day_seven_date, day_fourteen_date, day_thirty_date,  status
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
     params![
         appointment.patient_id,
         appointment.schedule,
@@ -658,6 +658,7 @@ fn extract_birth_year(dob: &str) -> Option<String> {
     }
 }
 
+// ADDED CODE BY RALPH
 #[tauri::command]
 fn create_window(app: tauri::AppHandle) {
   let webview_window = tauri::WebviewWindowBuilder::new(&app, "queueWindow", tauri::WebviewUrl::App("queue.html".into()))
@@ -724,6 +725,7 @@ async fn main() {
             archive_patient,             
             restore_patient,             
             get_archived_patients_cmd,
+            // ADDED CODE 
             create_window 
         ])
         .run(tauri::generate_context!())
@@ -765,7 +767,7 @@ async fn api_get_appointments(Path(pid): Path<i64>) -> Json<serde_json::Value> {
     }
 }
 
-// helper to reuse your existing get_appointments logic
+// ADDED CODE STATUS 
 fn get_appointments_impl(pid: i64) -> Result<Vec<Appointment>, String> {
     let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
@@ -796,6 +798,7 @@ fn get_appointments_impl(pid: i64) -> Result<Vec<Appointment>, String> {
                 day_thirty_date: row.get(12).ok(),
                 prophylaxis_type: row.get(13).ok(),
                 tetanus_toxoid: row.get(14).ok(),
+                // STATUS CODE 
                 status: row.get(15).ok(), 
             })
         })

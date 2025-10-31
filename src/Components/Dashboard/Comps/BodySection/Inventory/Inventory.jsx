@@ -1,5 +1,8 @@
 "use client"
 
+// EVERYHINGGGGGG
+// THIS WAS HEAVILY COPIED AND PASTED CUS KULANG ORAS, SAME DIN NG CSS ITO
+
 import { useState, useEffect } from "react"
 import "./Inventory.css"
 

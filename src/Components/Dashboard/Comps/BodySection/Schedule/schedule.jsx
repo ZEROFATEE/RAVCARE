@@ -1,5 +1,7 @@
 "use client"
 
+// i think just use schedule code mo, it'll be much easier than figuring each part or component that isn't working
+
 import { useState, useEffect, useMemo, useRef } from "react"
 import "./Schedule.css"
 import { RiPencilFill } from "react-icons/ri"
