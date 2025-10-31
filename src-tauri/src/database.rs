@@ -28,6 +28,8 @@ pub struct Patient {
     pub ill_oper: Option<String>,
     pub assessment: Option<String>,
     pub last_appointment: Option<String>,
+    //ADDED CODE 
+    pub status: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -38,12 +40,11 @@ pub struct InventoryItem {
     pub last_edited: Option<String>,
 }
 
-/// Initializes the database and creates all required tables if missing.
+
 pub fn init_db() -> Result<()> {
     fs::create_dir_all("./data").expect("Failed to create data directory");
-    let conn = Connection::open(r"C:\RavCare\data\ravcare.db")?;
+    let conn = Connection::open(r"./data/ravcare.db")?;
 
-    // 🧍 USERS TABLE
     conn.execute(
         "CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,8 +56,20 @@ pub fn init_db() -> Result<()> {
         )",
         [],
     )?;
+    // BOTH OF THESE CON.EXECUTE ADDED 
+     conn.execute(
+        "ALTER TABLE patients ADD COLUMN status TEXT DEFAULT 'pending'",
+        [],
+    )
+    .ok(); 
 
-    // 🧑‍⚕️ PATIENTS TABLE (updated)
+    conn.execute(
+    "ALTER TABLE patients ADD COLUMN archived INTEGER DEFAULT 0",
+    [],
+)
+.ok();
+
+    // ADDED CODE STATUS 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS patients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,12 +94,19 @@ pub fn init_db() -> Result<()> {
             allergies TEXT,
             ill_oper TEXT,
             assessment TEXT,
-            last_appointment TEXT
+            last_appointment TEXT,
+            status TEXT
         )",
         [],
     )?;
 
-    // 📦 INVENTORY TABLE
+  // NOT SURE IF THIS IS ADDED RECENTLY OR NOT, CHECK MO NALANG SA CODE MO LOL
+      conn.execute(
+        "ALTER TABLE patients ADD COLUMN status TEXT DEFAULT 'pending'",
+        [],
+           )
+    .ok();
+
     conn.execute(
         "CREATE TABLE IF NOT EXISTS inventory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,16 +120,16 @@ pub fn init_db() -> Result<()> {
     Ok(())
 }
 
-/// Adds a new patient to the database.
+/// IS NEVER USED!!!!!!
 pub fn create_patient(p: &Patient) -> Result<()> {
-    let conn = Connection::open(r"C:\RavCare\data\ravcare.db")?;
+    let conn = Connection::open(r"./data/ravcare.db")?;
     conn.execute(
         "INSERT INTO patients (
             first_name, last_name, middle_name, address, date_of_birth,
             age, gender, weight, contact_number, date_of_exposure,
             type_of_bite, site_of_bite, biting_animal, category,
-            previous_anti_rabies_vaccine, prev_vacc,
-            allergies, ill_oper, assessment
+            previous_anti_rabies_vaccine, prev_vacc, 
+            allergies, ill_oper, assessment, status
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
         params![
             p.first_name,
@@ -130,13 +150,15 @@ pub fn create_patient(p: &Patient) -> Result<()> {
             p.prev_vacc,
             p.allergies,
             p.ill_oper,
-            p.assessment
+            p.assessment,
+            // ANOTHER STATUS CODE 
+           p.status.as_deref().unwrap_or("pending").to_string(),
         ],
     )?;
     Ok(())
 }
 
-/// Retrieves all patients from the database.
+
 pub fn get_all_patients() -> Result<Vec<Patient>, rusqlite::Error> {
     let conn = Connection::open(DB_PATH)?;
     let mut stmt = conn.prepare("SELECT * FROM patients WHERE archived = 0 ORDER BY id DESC")?;
@@ -166,6 +188,8 @@ pub fn get_all_patients() -> Result<Vec<Patient>, rusqlite::Error> {
             ill_oper: row.get(20)?,
             assessment: row.get(21)?,
             last_appointment: row.get(22)?,
+            // ADDED CODE STATUS
+            status: row.get(23)?,
         })
     })?;
 
@@ -201,15 +225,18 @@ pub fn get_archived_patients() -> Result<Vec<Patient>, rusqlite::Error> {
             ill_oper: row.get(20)?,
             assessment: row.get(21)?,
             last_appointment: row.get(22)?,
+            //ADDED CODE 
+            status: row.get(23)?,
         })
     })?;
+    
 
     Ok(patients.filter_map(Result::ok).collect())
 }
 
 /// Adds or updates an inventory item.
 pub fn add_or_update_inventory_item(name: &str, amount: i32) -> Result<()> {
-    let conn = Connection::open(r"C:\RavCare\data\ravcare.db")?;
+    let conn = Connection::open(r"./data/ravcare.db")?;
     conn.execute(
         "INSERT INTO inventory (name, amount, last_edited)
          VALUES (?1, ?2, CURRENT_TIMESTAMP)
@@ -221,9 +248,10 @@ pub fn add_or_update_inventory_item(name: &str, amount: i32) -> Result<()> {
     Ok(())
 }
 
+
 /// Retrieves all inventory items.
 pub fn get_all_inventory() -> Result<Vec<InventoryItem>> {
-    let conn = Connection::open(r"C:\RavCare\data\ravcare.db")?;
+    let conn = Connection::open(r"./data/ravcare.db")?;
     let mut stmt = conn.prepare("SELECT * FROM inventory ORDER BY name ASC")?;
 
     let items = stmt

@@ -95,7 +95,8 @@ const Patient = () => {
   const [isEditingMedical, setIsEditingMedical] = useState(false)
   const [viewArchived, setViewArchived] = useState(false)
   const [archivedPatients, setArchivedPatients] = useState([])
-  const [showingArchived, setShowingArchived] = useState(false)
+
+  const [status, setstatus] = useState("")
 
   const [newTypeofBite, setNewTypeofBite] = useState("")
   const [newSite, setNewSite] = useState("")
@@ -275,6 +276,9 @@ const Patient = () => {
       allergies: allergies,
       ill_oper: illOper,
       assessment: assessment,
+
+      // STATUS ADDED
+      status: status,
     }
 
     try {
@@ -376,11 +380,11 @@ const Patient = () => {
       previous_vaccine: newPreviousAntiRabiesVaccine,
       prophylaxis_type: selectedProphylaxisType,
       tetanus_toxoid: newTetanusToxoid,
-      day_zero: dayZero || null,
-      day_three: dayThree || null,
-      day_seven: daySeven || null,
-      day_fourteen: dayFourteen || null,
-      day_thirty: dayThirty || null,
+      day_zero_date: dayZero || null,
+      day_three_date: dayThree || null,
+      day_seven_date: daySeven || null,
+      day_fourteen_date: dayFourteen || null,
+      day_thirty_date: dayThirty || null,
     }
 
     try {
@@ -443,7 +447,6 @@ const Patient = () => {
     appointment.tetanus_toxoid === "1"
   );
 
-  // ✅ fixed: use appointment, not appt
   setDayZero(appointment.day_zero_date || "");
   setDayThree(appointment.day_three_date || "");
   setDaySeven(appointment.day_seven_date || "");
@@ -562,6 +565,8 @@ const Patient = () => {
                     maxLength={10}
                     required
                   />
+
+                  {/* DROPDOWN ADDED TO ADDRESS */}
                   <select value={newAddress} onChange={(e) => setNewAddress(e.target.value)} required>
                     <option value="">Select Address</option>
                     <optgroup label="Cities">
@@ -1065,7 +1070,8 @@ const Patient = () => {
                           </div>
                         ))}
                       </div>
-
+   {/* may style for some reason dito, baka sa pag copy and paste ko sorreh
+   iN LINE 1086*/}
                       <label>Assessment</label>
                       <div className="assesinp">
                         <textarea
@@ -1076,12 +1082,13 @@ const Patient = () => {
                               assessment: e.target.value,
                             }))
                           }
-                          style={{
-                            resize: "none",
+
+                             style={{
+                             resize: "none",
                             width: "1120px",
                             height: "120px",
-                          }}
-                        />
+                          }} 
+                        /> 
                       </div>
                     </div>
                   </div>
@@ -1229,11 +1236,12 @@ const Patient = () => {
                     id: p.id,
                     name: `${p.first_name} ${p.last_name}`,
                   })}
-                  size={64}
+         size={64}
                   bgColor="#ffffff"
                   fgColor="#000000"
-                  level="H"
+                  level="H" 
                 />
+                {/* ADDED STYLED AGAIN */}
                 <p style={{ fontSize: "0.8em" }}>Scan QR</p>
               </div>
               <div style={{ display: "flex", gap: "5px" }}>
