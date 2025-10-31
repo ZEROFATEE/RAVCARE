@@ -28,6 +28,7 @@ pub struct Patient {
     pub ill_oper: Option<String>,
     pub assessment: Option<String>,
     pub last_appointment: Option<String>,
+    pub status: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -86,6 +87,12 @@ pub fn init_db() -> Result<()> {
         [],
     )?;
 
+      conn.execute(
+        "ALTER TABLE patients ADD COLUMN status TEXT DEFAULT 'pending'",
+        [],
+           )
+    .ok();
+
     // 📦 INVENTORY TABLE
     conn.execute(
         "CREATE TABLE IF NOT EXISTS inventory (
@@ -108,8 +115,8 @@ pub fn create_patient(p: &Patient) -> Result<()> {
             first_name, last_name, middle_name, address, date_of_birth,
             age, gender, weight, contact_number, date_of_exposure,
             type_of_bite, site_of_bite, biting_animal, category,
-            previous_anti_rabies_vaccine, prev_vacc,
-            allergies, ill_oper, assessment
+            previous_anti_rabies_vaccine, prev_vacc, 
+            allergies, ill_oper, assessment, status
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
         params![
             p.first_name,
@@ -130,7 +137,8 @@ pub fn create_patient(p: &Patient) -> Result<()> {
             p.prev_vacc,
             p.allergies,
             p.ill_oper,
-            p.assessment
+            p.assessment,
+            p.status
         ],
     )?;
     Ok(())
@@ -166,6 +174,7 @@ pub fn get_all_patients() -> Result<Vec<Patient>, rusqlite::Error> {
             ill_oper: row.get(20)?,
             assessment: row.get(21)?,
             last_appointment: row.get(22)?,
+            status: row.get(23)?,
         })
     })?;
 
@@ -201,8 +210,10 @@ pub fn get_archived_patients() -> Result<Vec<Patient>, rusqlite::Error> {
             ill_oper: row.get(20)?,
             assessment: row.get(21)?,
             last_appointment: row.get(22)?,
+            status: row.get(23)?,
         })
     })?;
+    
 
     Ok(patients.filter_map(Result::ok).collect())
 }
@@ -220,6 +231,7 @@ pub fn add_or_update_inventory_item(name: &str, amount: i32) -> Result<()> {
     )?;
     Ok(())
 }
+
 
 /// Retrieves all inventory items.
 pub fn get_all_inventory() -> Result<Vec<InventoryItem>> {

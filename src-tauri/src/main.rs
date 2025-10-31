@@ -195,7 +195,7 @@ fn create_patient_cmd(patient: Patient) -> Result<serde_json::Value, String> {
             age, gender, weight, contact_number, date_of_exposure,
             type_of_bite, site_of_bite, biting_animal, category,
             previous_anti_rabies_vaccine, prev_vacc,
-            allergies, ill_oper, assessment
+            allergies, ill_oper, assessment, status
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
         params![
             patient.first_name,
@@ -216,7 +216,8 @@ fn create_patient_cmd(patient: Patient) -> Result<serde_json::Value, String> {
             patient.prev_vacc,
             patient.allergies,
             patient.ill_oper,
-            patient.assessment
+            patient.assessment,
+            patient.status.unwrap_or_else(|| "pending".to_string()),
         ],
     )
     .map_err(|e| format!("Create patient failed: {}", e))?;
@@ -300,6 +301,8 @@ fn get_patient_with_user(id: i64) -> Result<serde_json::Value, String> {
         LEFT JOIN musers u ON p.id = u.patient_id
         WHERE p.id = ?1"
     ).map_err(|e| format!("Prepare failed: {}", e))?;
+     
+    
 
     let result = stmt.query_row(params![id], |row| {
         let encrypted_pw: Option<String> = row.get(16).ok();
@@ -379,6 +382,7 @@ struct Appointment {
     pub day_seven_date: Option<String>,
     pub day_fourteen_date: Option<String>,
     pub day_thirty_date: Option<String>,
+    pub status: Option<String>,
 }
 
 fn init_appointments_table(conn: &Connection) -> rusqlite::Result<()> {
@@ -399,6 +403,7 @@ fn init_appointments_table(conn: &Connection) -> rusqlite::Result<()> {
             day_seven_date TEXT,
             day_fourteen_date TEXT,
             day_thirty_date TEXT,
+            status TEXT DEFAULT 'pending',
             FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE
         )",
         [],
@@ -413,7 +418,7 @@ fn get_appointments(state: State<'_, AppState>, patient_id: i32) -> Result<Vec<A
         "SELECT id, patient_id, schedule, type_of_bite, site_of_bite, biting_animal,
                 category, previous_vaccine, day_zero_date, day_three_date,
                 day_seven_date, day_fourteen_date, day_thirty_date,
-                prophylaxis_type, tetanus_toxoid
+                prophylaxis_type, tetanus_toxoid, status
          FROM appointments
          WHERE patient_id = ?1
          ORDER BY schedule ASC"
@@ -437,7 +442,7 @@ fn get_appointments(state: State<'_, AppState>, patient_id: i32) -> Result<Vec<A
                 day_thirty_date: row.get(12).ok(),
                 prophylaxis_type: row.get(13).ok(),
                 tetanus_toxoid: row.get(14).ok(),
-
+                status: row.get(15).ok(),
             })
         })
         .map_err(|e| e.to_string())?
@@ -455,7 +460,7 @@ fn create_appointment(state: State<'_, AppState>, appointment: Appointment) -> R
     "INSERT INTO appointments (
         patient_id, schedule, type_of_bite, site_of_bite, biting_animal,
         category, previous_vaccine, prophylaxis_type, tetanus_toxoid,
-        day_zero_date, day_three_date, day_seven_date, day_fourteen_date, day_thirty_date
+        day_zero_date, day_three_date, day_seven_date, day_fourteen_date, day_thirty_date,  status
     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
     params![
         appointment.patient_id,
@@ -472,6 +477,7 @@ fn create_appointment(state: State<'_, AppState>, appointment: Appointment) -> R
         appointment.day_seven_date,      // ✅ correct field names
         appointment.day_fourteen_date,   // ✅ correct field names
         appointment.day_thirty_date,  
+        appointment.status.unwrap_or_else(|| "pending".to_string()),
     
         ],
     )
@@ -499,8 +505,9 @@ fn update_appointment(state: State<'_, AppState>, appointment: Appointment) -> R
              day_three_date = ?10,
              day_seven_date = ?11,
              day_fourteen_date = ?12,
-             day_thirty_date = ?13
-         WHERE id = ?14",
+             day_thirty_date = ?13,
+             status = ?14
+         WHERE id = ",
         params![
             appointment.schedule,
             appointment.type_of_bite,
@@ -515,12 +522,30 @@ fn update_appointment(state: State<'_, AppState>, appointment: Appointment) -> R
         appointment.day_seven_date,      // ✅ correct field names
         appointment.day_fourteen_date,   // ✅ correct field names
         appointment.day_thirty_date,  
+        appointment.status.unwrap_or_else(|| "pending".to_string()),
             id // ✅ use `id`, not `appointment.id`
         ],
     )
     .map_err(|e| e.to_string())?; // ✅ properly chained, no trailing comma
 
     Ok("Appointment updated successfully".into())
+}
+
+#[tauri::command]
+fn update_appointment_status(
+    state: State<'_, AppState>,
+    id: i32,
+    status: String,
+) -> Result<String, String> {
+    let conn = state.db.lock().unwrap();
+
+    conn.execute(
+        "UPDATE appointments SET status = ?1 WHERE id = ?2",
+        params![status, id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("Appointment status updated successfully".into())
 }
 
 // ==================== PATIENT MEDICAL UPDATE ====================
@@ -620,7 +645,7 @@ fn decrypt_password(encrypted_b64: &str, key: &str) -> Result<String, String> {
     Ok(String::from_utf8(decrypted).map_err(|e| e.to_string())?)
 }
 
-
+    
 fn extract_birth_year(dob: &str) -> Option<String> {
     if dob.contains('-') {
         // Format: YYYY-MM-DD
@@ -632,6 +657,14 @@ fn extract_birth_year(dob: &str) -> Option<String> {
         None
     }
 }
+
+#[tauri::command]
+fn create_window(app: tauri::AppHandle) {
+  let webview_window = tauri::WebviewWindowBuilder::new(&app, "queueWindow", tauri::WebviewUrl::App("queue.html".into()))
+    .build()
+    .unwrap();
+}
+
 // ==================== MAIN ====================
 #[tokio::main]
 async fn main() {
@@ -685,11 +718,13 @@ async fn main() {
             get_appointments,
             create_appointment,
             update_appointment,
+            update_appointment_status,
             update_patient_medical,
             update_muser_password,
             archive_patient,             
             restore_patient,             
-            get_archived_patients_cmd
+            get_archived_patients_cmd,
+            create_window 
         ])
         .run(tauri::generate_context!())
         .expect("Error running Tauri app");
@@ -737,7 +772,7 @@ fn get_appointments_impl(pid: i64) -> Result<Vec<Appointment>, String> {
         "SELECT id, patient_id, schedule, type_of_bite, site_of_bite, biting_animal,
                 category, previous_vaccine, day_zero_date, day_three_date,
                 day_seven_date, day_fourteen_date, day_thirty_date,
-                prophylaxis_type, tetanus_toxoid
+                prophylaxis_type, tetanus_toxoid, status
          FROM appointments
          WHERE patient_id = ?1
          ORDER BY schedule ASC"
@@ -761,12 +796,17 @@ fn get_appointments_impl(pid: i64) -> Result<Vec<Appointment>, String> {
                 day_thirty_date: row.get(12).ok(),
                 prophylaxis_type: row.get(13).ok(),
                 tetanus_toxoid: row.get(14).ok(),
+                status: row.get(15).ok(), 
             })
         })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
-    Ok(appointments)
-}
+        Ok(appointments)
+    }
+
+
+
+    
 
