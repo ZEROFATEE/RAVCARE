@@ -1,0 +1,1110 @@
+.patientDiv{
+  
+.container{
+    height: auto;
+    width: 950px;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 2rem;
+    box-shadow: 0 7px 50px #dfcdcd;
+    display: flex;
+    flex-direction: column;
+    align-items: center; 
+    text-align: center;
+     margin: 0 auto;  
+
+.searchBar {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+
+  .icon{
+    font-size: 30px;
+  }
+}
+
+.searchInput, .filterDropdown {
+  flex: 1;
+  padding: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  
+}
+/* STYLING FOR BUTTONS */
+.SubmitBtn{
+    padding: .5rem;
+    background:#651126; 
+    color: white; 
+    border-radius: 10px;
+    font-weight: 400; 
+    transition: .3s ease; 
+    outline: none;
+    border: none;
+    &:hover{ 
+        background: #bb4d4d; 
+        color: white; 
+    }
+}
+
+.CancelBtn{
+    padding: .5rem;
+    background:#f5f5f5; 
+    color: #636363; 
+    border-radius: 10px;
+    font-weight: 400; 
+    transition: .3s ease; 
+    outline: none;
+    border: none;
+    &:hover{ 
+        background: #636363;
+        color: white; 
+    } 
+}
+
+.createBtn {
+    padding: .5rem;
+    background:#f5f5f5; 
+    color: #651126; 
+    border-radius: 10px;
+    font-weight: 400; 
+    transition: .3s ease; 
+    outline: none;
+    border: none;
+    &:hover{ 
+        background: #bb4d4d; 
+        color: white; 
+    } 
+}
+
+/* STYLING FOR PATIENT LIST TABLE */
+.patientList {
+  width: 100%;
+}
+
+.patientRow {
+  display: grid;
+  grid-template-columns: 2fr 1fr 2fr 2fr 1fr;;
+  padding: 0.5rem;
+  border-bottom: 1px solid #ddd;
+  align-items: center;
+}
+
+.patientRow.header {
+  font-weight: bold;
+  border-bottom: 2px solid #000;
+  
+}
+
+.patientRow button {
+  background: #ffffff;
+  border: none;
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.popup {
+  
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex; align-items: center; justify-content: center;
+  overflow-y: auto;
+  
+}
+
+.popupView {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+
+  background: rgba(0, 0, 0, 0.5);
+  overflow-y: auto;
+}
+
+.createpatientpopupForm {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;  
+  width: 900px;
+  
+}
+
+
+.choicecontainer{
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;  
+  width: 500px;
+  
+}
+.regvac{
+   background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;  
+  width: 600px;
+  
+  .regbtns{
+    border-radius: 10px;
+  }
+}
+
+/* STYLING FOR CREATE PATIENTS TEXT INPUTS BRRRRR */
+
+/* PATIENT INFO */
+.PatientInfo1{
+  display: flex;
+  gap: 10px;
+  margin-bottom: 5px;
+  align-items: center;
+}
+.PatientInfo2{
+  display: flex;
+  gap: 10px;
+  margin-bottom: 5px;
+  align-items: center;
+}
+
+/* HISTORY OF EXPOSURE */
+.PatientInfo3{
+  
+  gap: 10px;
+  align-items: center;
+}
+.PatientInfo2_1{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.input-DateOfExposure_TypeOfBite{
+  display: flex;
+  gap: 10px;
+  margin-right: auto;
+  align-items: center;
+  margin-bottom: 1px; 
+}
+
+/* CHECKBOX & RADIO BUTTON SELECTION */
+.PatientInfo4{
+  display: flex;
+  gap: 5px;
+  margin-right: auto;
+  align-items: right;
+  margin-bottom: 5px;
+}
+.PatientInfo4_1{
+  display: flex;
+  gap: 5px;
+  margin-right: auto;
+  align-items: right;
+  margin-bottom: 5px;
+}
+
+.PatientInfo4_2{
+  display: flex;
+  gap: 5px;
+  margin-right: auto;
+  align-items: right;
+  margin-bottom: 5px;
+}
+
+.input-row6_category{
+  display: flex;
+  gap: 1px;
+  align-items: center;
+  margin-bottom: 1px;
+}
+
+/* CHECKBOX */
+
+.checkbox{
+  display: flex;
+  font-size: 14px;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+
+.MEDHIST{
+  padding: 10px;
+  
+}
+
+
+
+.popupActions {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.popupActions button {
+  flex: 1;  
+}
+
+
+/* Patient Info View*/
+.view-modalPatient{
+  width: 1200px;
+  height: 1200px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 10px;
+  padding: 1.5rem;
+  box-shadow: 0 0 10px rgba(0,0,0,0.2);
+  font-size: 0.9rem;
+}
+
+.loginandtext {
+  display: flex;
+  justify-content: space-between; /* spreads them apart */
+  align-items: flex-start; /* aligns top edges */
+  margin-bottom: 10px;
+}
+
+.loginandtext h3 {
+  margin: 0;
+  position: relative;
+  left: 520px;
+}
+
+.loginInfo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.logcred {
+  text-align: left;
+  position: relative;
+  right: 870px;
+}
+
+.logcred .icon {
+  font-size: 18px;
+  cursor: pointer;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+.logcred button {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.logcred .UpdatePasswordBtn
+{
+   border-radius: 4px;
+    outline: none;
+    border: none;
+     
+    &:hover{ 
+        
+    background: #cfcfcf; 
+        color: rgb(0, 0, 0);
+  
+    }
+
+}
+.section-title{
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  border-bottom: 3px solid #eb5050;
+  padding-bottom: 0.5rem;
+}
+
+.title{
+  font-weight: bold;
+  padding-bottom: 15px;
+}
+.title2{
+  font-weight: bold;
+  padding-bottom: 15px;
+}
+
+.info-grid {
+  display: grid;
+  text-align: left;
+  align-items: left;
+  grid-template-columns: repeat(4, 1fr);
+  row-gap: 3px;
+  column-gap: 10px;
+  font-size: 0.9rem;
+  padding-bottom: 1rem;
+}
+
+.info-grid2 {
+  display: grid;
+  text-align: left;
+  align-items: left;
+  grid-template-columns: repeat(4, 1fr);
+  row-gap: 3px;
+  column-gap: 10px;
+  font-size: 0.9rem;
+  padding-bottom: 1rem;
+
+ 
+}
+
+.EditBtn {
+    padding: .5rem;
+  
+   
+    border-radius: 10px;
+    font-weight: 400; 
+    transition: .3s ease;
+    width: 200px;
+    height: 30px;
+    outline: none;
+    border: none;
+     
+    &:hover{ 
+        background: #cfcfcf; 
+        color: rgb(0, 0, 0);
+  
+
+    }}
+
+.btndisp{
+ display: flex;
+  justify-content: flex-end; /* pushes button to far right */
+  margin-top: 100px;
+  width: 530%;
+}
+
+.view-PatientContainer{
+ display: flex;
+ justify-content: center;
+ gap: 20px;
+
+}
+.modal-buttons {
+  position: absolute;
+  height: 40px;
+  top: 40px;        /* distance from bottom edge */
+  right: 180px;         /* align to bottom-right corner */
+  display: flex;
+  gap: 10px;
+  border: black;
+}
+
+.Closebtn{
+  background:#ffffff;
+  color:rgb(0, 0, 0);
+  border-radius: 10px;
+   font-weight: 500; 
+  border: black;
+  outline: black;
+  padding: 15px;
+}
+
+.archiveToggleBtn{
+ width: 180px;
+ height: 30px;
+  border: #ccc;
+  border-radius: 10px;
+    &:hover{ 
+        background: #cfcfcf; 
+        color: rgb(0, 0, 0); 
+
+ }
+
+}
+.Restore{
+   width: 60px;
+  border: #ccc;
+  border-radius: 10px;
+    &:hover{ 
+        background: #cfcfcf; 
+        color: rgb(0, 0, 0); 
+}
+}
+
+.Archive{
+  width: 60px;
+  border: #ccc;
+  border-radius: 10px;
+    &:hover{ 
+        background: #cfcfcf; 
+        color: rgb(0, 0, 0); 
+
+ }
+}
+
+ .archivebtn2{
+   position: absolute;
+  height: 30px;
+  top: 80px;        /* distance from bottom edge */
+  left: 740px;         /* align to bottom-right corner */
+  display: flex;
+  
+  border: none;
+  
+}
+
+.containerMed{
+   height: 750px;
+    width: 1000px;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 2rem;
+    box-shadow: 0 7px 50px #847d7d;
+    display: flex;
+    flex-direction: column;
+    align-items: center; 
+    text-align: center;
+     margin: 0 auto;  
+}
+
+.titleedit{
+font-weight: bold;
+  padding-bottom: 15px;
+}
+
+.inputedit1{
+  display: grid;
+  text-align: left;
+  align-items: left;
+  grid-template-columns: repeat(2, 1fr);
+  row-gap: 10px;
+  column-gap: 10px;
+  font-size: 0.9rem;
+  padding-bottom: 1rem;
+}
+
+.AssessmentStyling .textarea{
+  resize: none;
+  width: 850px;
+  height:200px;
+  
+}
+
+.assesinp{
+max-height: 150px;           /* adjust height if needed */
+width: 1150px;
+  overflow-y: auto;            /* only scroll vertically */
+  overflow-x: hidden;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  
+}
+
+/* Saved Medical History (read-only) */
+.medical-display {
+  background-color: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 15px;
+  margin-top: 10px;
+  line-height: 1.6;
+}
+
+.medical-display p {
+  margin: 5px 0;
+  font-size: 14px;
+  color: #333;
+}
+
+.medical-display2{
+  display: grid;
+  text-align: left;
+  align-items: left;
+  grid-template-columns: repeat(4, 1fr);
+  row-gap: 3px;
+  column-gap: 10px;
+  font-size: 0.9rem;
+  padding-bottom: 1rem;
+}
+
+/* For the Assessment area in saved mode */
+.assessment-display {
+  margin-top: 15px;
+}
+
+.assessment-box {
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 10px;
+  min-height: 80px;
+  white-space: pre-wrap;
+  font-style: italic;
+}
+
+
+.divbtn{
+  top: 500px;
+  bottom: 100px;        /* distance from bottom edge */
+  right: 710px;         /* align to bottom-right corner */
+  display: flex;
+  gap: 10px;
+  border: black;
+}
+
+.assesdisp{
+  max-height: 220px;           /* adjust height if needed */
+  overflow-y:hidden;            /* only scroll vertically */
+  overflow-x: hidden;
+  width: 500px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+}
+
+.containerapptNew{
+    height: 700px;
+    width: 950px;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 2rem;
+    box-shadow: 0 7px 50px #847d7d;
+    display: flex;
+    flex-direction: column;
+    align-items: center; 
+    text-align: center;
+     margin: 0 auto;  
+}
+.apptinfo {
+  display: grid;
+  text-align: left;
+  align-items: left;
+  grid-template-columns: repeat(4, 1fr);
+  row-gap: 3px;
+  column-gap: 10px;
+  font-size: 0.9rem;
+  padding-bottom: 1rem;
+}
+
+/* Scrollable area */
+
+
+.appointmentHistoryContainer{
+
+  max-height: 200px;           /* adjust height if needed */
+  overflow-y: auto;            /* only scroll vertically */
+  overflow-x: hidden;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+.top {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  text-align: left;
+  padding: 10px;
+}
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  border-bottom: 1px solid #eee;
+  align-items: center;
+}
+
+
+}
+
+/* Make sure the rest of the popup doesn’t shift */
+.appointmentHistoryContainer::-webkit-scrollbar {
+  width: 8px;
+}
+.appointmentHistoryContainer::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 4px;
+}
+.appointmentHistoryContainer::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
+}
+
+/* Table styling */
+.appointmentHistoryContainer table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.appointmentHistoryContainer th,
+.appointmentHistoryContainer td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+
+
+.appointment-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.appointment-table th, .appointment-table td {
+  border: 1px solid #ccc;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.textbtncont {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* puts button beside the text */
+  margin: 0; /* removes extra outer spacing */
+  padding: 0; /* removes inner spacing */
+}
+
+.appointment-table th {
+  background-color: #f2f2f2;
+}
+
+.textbtncont h3 {
+  position: relative;
+  margin: 0;
+  top: 10px;
+  left: 500px;
+}
+.btnapptadd{
+    position: relative;
+  right: 1000px;
+  margin: 0;
+}
+
+.AddAppointmentBtn {
+  margin-top: 10px;
+  padding: 6px 12px;
+  
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover{
+    background: #cfcfcf; 
+        color: rgb(0, 0, 0);
+  }
+}
+
+
+
+.apptbtns{
+   position: absolute;
+  bottom: 100px;        /* distance from bottom edge */
+  right: 710px;         /* align to bottom-right corner */
+  display: flex;
+  gap: 10px;
+  border: black;
+}
+
+
+
+/* Overlay background */
+.appointment-view-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+/* Modal box */
+.appointment-view-modal {
+  background: #fff;
+  height: 700px;
+    width: 950px;         /* slightly taller */
+ overflow: hidden;  
+  padding: 2.5rem 3rem;       /* more spacious padding */
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  position: relative;
+  animation: fadeInUp 0.3s ease-out;
+  font-size: 0.98rem;
+}
+
+/* Animation */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Headings */
+.appointment-view-modal h2 {
+  text-align: center;
+  color: #431b1b;
+  font-weight: 700;
+  margin-bottom: 1.4rem;
+}
+
+.appointment-section-title {
+  text-align: center;
+  font-size: 1.05rem;
+  color: #6a2d2d;
+  margin: 1.4rem 0 0.8rem 0;
+  font-weight: 700;
+  border-bottom: 2px solid #e4b7b7;
+  padding-bottom: 4px;
+}
+
+
+
+/* Info layout */
+
+.label1{
+  display: grid;
+   text-align: left;
+  align-items: left;
+  grid-template-columns: repeat(1, 1fr);
+  
+}
+.infolbl1{
+   display: grid;
+   text-align: center;
+  align-items: center;
+  grid-template-columns: repeat(4, 2fr);
+ 
+}
+
+.infolbl2{
+ 
+display: grid;
+   text-align: left;
+  align-items: left;
+  
+  grid-template-columns: repeat(2, 1fr);
+}
+.infolbl3{
+  display: grid;
+   text-align: center;
+  align-items: center;
+   
+  grid-template-columns: repeat(3, 1fr);
+
+}
+
+.infolbl5{
+  display: grid;
+   text-align: left;
+  
+  align-items: left;
+  grid-template-columns: repeat(1, 1fr);
+
+}
+
+.infolbl6{
+  display: grid;
+   text-align: center;
+   gap: 20px; 
+  align-items: center;
+  grid-template-columns: repeat(4, 1fr);
+
+}
+.date-grid-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  width: 100%;
+}
+
+/* Header row: 3 aligned columns */
+.date-grid-container .date-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr 0.8fr; /* Scheduled | Given | Status */
+  font-weight: bold;
+  margin-bottom: 6px;
+  color: #431b1b;
+  padding-bottom: 4px;
+}
+
+.date-header {
+  font-weight: bold;
+}
+
+.prophylaxis-item-grid {
+  display: contents; /* Allows the children to participate in the parent's grid layout */
+}
+
+.infolbl5{
+display: grid;
+   text-align: center;
+  align-items: center;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* Prophylaxis schedule grid */
+.prophylaxis-item-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 0.8fr;
+  align-items: center;
+  gap: 10px;
+ 
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.prophylaxis-item-grid span {
+  text-align: left;
+}
+
+.prophylaxis-item-grid input[type="date"] {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  background-color: #fff;
+}
+
+/* Optional: colorful status emojis look balanced */
+.prophylaxis-item-grid span:last-child {
+  text-align: center;
+  font-weight: 500;
+}
+
+/* Overall status line below the table */
+.status-summary {
+  margin-top: 12px;
+  font-weight: 600;
+  color: #431b1b;
+  text-align: right;
+}
+
+
+/* Header row (three columns) */
+.date-header-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-weight: 50px;
+  margin-bottom: 8px;
+}
+
+.date-header-row,
+.prophylaxis-item-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 0.8fr; /* make first column wider */
+  align-items: center;
+  gap: 10px;
+}
+
+
+.date-header-row .date-header {
+  text-align: left;
+  font-size: 0.95rem;
+}
+/* Buttons */
+.appointment-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.8rem;
+  margin-top: 2rem;
+}
+.appointment-buttons button {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.appointment-buttons .edit {
+  background: #e0e0e0;
+  color: #383838;
+}
+.appointment-buttons .close {
+  background: #e63946;
+  color: #fff;
+}
+.appointment-buttons button:hover {
+  opacity: 0.9;
+}
+
+.printBtn {
+  background-color: #007acc;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s ease;
+}
+.printBtn:hover {
+  background-color: #005fa3;
+}
+
+@media print {
+  @page {
+    size: 5.5in 4in;
+    margin: 0.2in; /* tighter margin */
+  }
+  body {
+    margin: 0;
+    padding: 0;
+  }
+}
+
+.card-print {
+  font-family: Arial, sans-serif;
+  width: 5.5in;
+  height: 4in;
+  font-size: 10px;
+  padding: 8px;
+  border: 1px solid #000;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: center;      /* centers text */
+}
+
+.card-title {
+  text-align: center;
+  font-weight: bold;
+  text-decoration: underline;
+  margin: 0 0 4px 0;
+}
+
+.section-title {
+  margin: 4px 0 2px 0;
+  font-weight: bold;
+  text-decoration: underline;
+  text-align: center;
+}
+
+.p-info,
+.p-detail {
+  width: 100%;
+  text-align: center;      /* ✅ centers text inside patient info sections */
+  margin-bottom: 2px;
+}
+
+.vaccine-table {
+  width: 90%;              /* ✅ narrower and centered */
+  border-collapse: collapse;
+  margin: 2px auto;
+}
+
+.vaccine-table th,
+.vaccine-table td {
+  border: 1px solid #000;
+  padding: 1px 2px;
+  text-align: center;      /* ✅ center table contents */
+}
+
+.qr-section {
+  text-align: center;
+  margin-top: 4px;
+}
+
+
+
+/* Container for the appointment filters */
+.appt-filters {
+  display: flex;
+  align-items: center;
+  gap: 25px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+/* Label styles */
+.appt-filters label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+/* Dropdown */
+.appt-filters select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #bbb;
+  background: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.appt-filters select:focus {
+  outline: none;
+  border-color: #4a90e2;
+}
+
+/* Radio buttons group */
+.appt-filters .radio-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Radio inputs spacing */
+.appt-filters input[type="radio"] {
+  margin-right: 3px;
+  cursor: pointer;
+}
+
+/* Optional hover effect */
+.appt-filters select:hover,
+.appt-filters input[type="radio"]:hover + label {
+  opacity: 0.9;
+}
+/* APPOINTMENT HISTORY FILTER CONTROLS (right side of title) */
+.apptFilterControls {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  position: relative;
+  right: 120px;   /* moves it into the red circled zone */
+  top: 10px;
+}
+
+/* Radio buttons spacing */
+.sortOptions label {
+  margin-right: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.sortOptions input[type="radio"] {
+  margin-right: 3px;
+}
+
+/* Dropdown styling */
+.apptFilterDropdown {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #bbb;
+  font-size: 14px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.apptFilterDropdown:hover {
+  border-color: #651126;
+}
+
+
+}
+}
