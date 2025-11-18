@@ -442,7 +442,10 @@
 
  }
 }
-
+.apptFilterControls{
+  margin: 0;
+  right: 10px;
+}
  .archivebtn2{
    position: absolute;
   height: 30px;
@@ -908,6 +911,9 @@ display: grid;
   gap: 10px;
 }
 
+.newRegularGivenDate{
+  width: 50px;
+}
 
 .date-header-row .date-header {
   text-align: left;
@@ -1104,6 +1110,19 @@ display: grid;
 .apptFilterDropdown:hover {
   border-color: #651126;
 }
+
+
+/* ---------- row that holds both ---------- */
+
+.apptHeaderBar {
+  display: flex;
+  justify-content: space-between;   /* button left – filters right */
+  align-items: center;              /* vertical centering */
+  gap: 30rem;
+  margin: 0;
+}
+
+
 
 
 }

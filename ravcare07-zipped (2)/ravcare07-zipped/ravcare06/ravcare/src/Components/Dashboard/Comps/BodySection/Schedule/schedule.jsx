@@ -74,11 +74,25 @@ const confirmReschedule = async () => {
 
   try {
     const updatedAppt = { ...apptToResched };
-    const newDateObj = new Date(newDate);
-    if (isNaN(newDateObj)) {
+
+    // ──────────────────────────────────────────────
+    // Helpers
+    // ──────────────────────────────────────────────
+
+    const parseYMD = (s) => {
+      if (!s) return null;
+      const m = String(s).match(/(\d{4})-(\d{2})-(\d{2})/);
+      if (!m) return null;
+      return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])); // local midnight
+    };
+
+    const newDateObj = parseYMD(newDate);
+    if (!newDateObj) {
       alert("Invalid new date.");
       return;
     }
+
+    const dateStrNorm = (v) => normalizeToDateStr(v);
 
     const dayFields = [
       ["day_zero_date", "day_zero_status"],
@@ -94,62 +108,172 @@ const confirmReschedule = async () => {
       ["hepa_b_dose3", "hepa_b_status3"],
     ];
 
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const diffDays = (to, from) =>
+      Math.round((to.getTime() - from.getTime()) / DAY_MS);
+
     let rescheduledSomething = false;
 
-    // 🟥 1) ANTI-RABIES MISSED DOSES
-    for (let i = 0; i < dayFields.length; i++) {
-      const [dateField, statusField] = dayFields[i];
-      const status = (apptToResched[statusField] || "").toLowerCase();
+    // ──────────────────────────────────────────────
+    // 1) ANTI-RABIES: detect missed dose *directly*
+    // ──────────────────────────────────────────────
 
-      if (status === "missed") {
-        const oldDate = new Date(apptToResched[dateField]);
-        if (isNaN(oldDate)) continue;
+    const missedDoseInfo = dayFields.find(
+      ([dateField, statusField]) =>
+        (apptToResched[statusField] || "").toLowerCase() === "missed"
+    );
 
-        const diffDays = Math.round((newDateObj - oldDate) / (1000 * 60 * 60 * 24));
+    if (missedDoseInfo) {
+      const [missedField, missedStatusField] = missedDoseInfo;
 
+      for (let i = 0; i < dayFields.length; i++) {
+        const [dateField, statusField] = dayFields[i];
+
+        if (dateField !== missedField) continue;
+
+        const oldDateStr = dateStrNorm(apptToResched[dateField]);
+        const oldDateObj = parseYMD(oldDateStr);
+
+        if (!oldDateObj) break;
+
+        const shift = diffDays(newDateObj, oldDateObj);
+
+        // Update missed dose
         updatedAppt[dateField] = dateObjToDateStr(newDateObj);
         updatedAppt[statusField] = "🟡 Pending";
 
-        // shift later doses
-        for (let j = i + 1; j < dayFields.length; j++) {
-          const [laterDateField, laterStatusField] = dayFields[j];
-          if (updatedAppt[laterDateField]) {
-            const shifted = new Date(updatedAppt[laterDateField]);
-            shifted.setDate(shifted.getDate() + diffDays);
-            updatedAppt[laterDateField] = dateObjToDateStr(shifted);
-            updatedAppt[laterStatusField] = "🟡 Pending";
-          }
+        // Shift all later doses
+       // Recalculate all later doses based on *original intervals* from D0
+// ✅ Only reschedule *non-done* doses *after* the missed one
+// ✅ Preserve original intervals between remaining doses
+
+const intervals = [0, 3, 7, 14, 30]; // ARV day offsets
+const missedIndex = i; // index of the missed dose (e.g. D3 → i=1)
+
+let firstNonDoneIndex = null;
+for (let j = missedIndex; j < dayFields.length; j++) {
+  const [, statusField] = dayFields[j];
+  const status = (updatedAppt[statusField] || "").toLowerCase();
+  if (!["✔️ done", "done"].includes(status)) {
+    firstNonDoneIndex = j;
+    break;
+  }
+}
+
+if (firstNonDoneIndex === null) {
+  alert("All later doses are already done — nothing to reschedule.");
+  return;
+}
+
+// ✅ Reschedule *only* from first non-done dose onward
+const baseDate = newDateObj; // new date for the missed dose
+const baseInterval = intervals[firstNonDoneIndex];
+
+for (let j = firstNonDoneIndex; j < dayFields.length; j++) {
+  const [dateField, statusField] = dayFields[j];
+  const originalInterval = intervals[j] - baseInterval;
+  const newDate = new Date(baseDate);
+  newDate.setDate(baseDate.getDate() + originalInterval);
+
+  updatedAppt[dateField] = dateObjToDateStr(newDate);
+  updatedAppt[statusField] = "🟡 Pending";
+}
+
+        rescheduledSomething = true;
+        break;
+      }
+    }
+
+    // ──────────────────────────────────────────────
+    // 2) REGULAR SINGLE-SHOT (not Hepa B)
+    // ──────────────────────────────────────────────
+
+    if (!rescheduledSomething) {
+      if (
+        apptToResched.regular_type &&
+        apptToResched.regular_type !== "Hepa B Vaccine"
+      ) {
+        const status = (apptToResched.regular_status || "").toLowerCase();
+        if (status === "missed") {
+          updatedAppt.regular_date = dateObjToDateStr(newDateObj);
+          updatedAppt.regular_status = "🟡 Pending";
+          rescheduledSomething = true;
         }
-
-        rescheduledSomething = true;
       }
     }
 
-    // 🟩 2) REGULAR SINGLE-SHOT VACCINES
-    if (
-      apptToResched.regular_type &&
-      apptToResched.regular_type !== "Hepa B Vaccine"
-    ) {
-      const status = (apptToResched.regular_status || "").toLowerCase();
-      if (status === "missed") {
-        updatedAppt.regular_date = dateObjToDateStr(newDateObj);
-        updatedAppt.regular_status = "🟡 Pending";
-        rescheduledSomething = true;
+    // ──────────────────────────────────────────────
+    // 3) HEPATITIS B (3 DOSE)
+    // ──────────────────────────────────────────────
+
+    if (!rescheduledSomething) {
+      const missedHepa = hepaFields.find(
+        ([dateField, statusField]) =>
+          (apptToResched[statusField] || "").toLowerCase() === "missed"
+      );
+
+      if (missedHepa) {
+        const [missedField, missedStatus] = missedHepa;
+
+        for (let i = 0; i < hepaFields.length; i++) {
+          const [dateField, statusField] = hepaFields[i];
+
+          if (dateField !== missedField) continue;
+
+          const oldDateStr = dateStrNorm(apptToResched[dateField]);
+          const oldDateObj = parseYMD(oldDateStr);
+          const shift = diffDays(newDateObj, oldDateObj);
+
+          updatedAppt[dateField] = dateObjToDateStr(newDateObj);
+          updatedAppt[statusField] = "🟡 Pending";
+
+          // Shift later doses
+          // ✅ Hepa B: reschedule only *non-done* doses *after* the missed one
+// ✅ Use real-world 1-month / 6-month offsets from Dose 1
+
+const missedIdx = i; // 0, 1, or 2
+
+let firstNonDoneIdx = null;
+for (let j = missedIdx; j < hepaFields.length; j++) {
+  const [, statusField] = hepaFields[j];
+  const status = (updatedAppt[statusField] || "").toLowerCase();
+  if (!["✔️ done", "done"].includes(status)) {
+    firstNonDoneIdx = j;
+    break;
+  }
+}
+
+if (firstNonDoneIdx === null) {
+  alert("All later Hepa B doses are already done — nothing to reschedule.");
+  return;
+}
+
+// ✅ Anchor: Dose 1 date
+const dose1Date = parseYMD(dateStrNorm(updatedAppt.hepa_b_dose1));
+if (!dose1Date) {
+  alert("Dose 1 date is missing — cannot reschedule.");
+  return;
+}
+
+// ✅ Real-world month offsets from Dose 1
+const monthOffsets = [0, 1, 6]; // months after Dose 1
+
+for (let j = firstNonDoneIdx; j < hepaFields.length; j++) {
+  const [dateField, statusField] = hepaFields[j];
+  const newDate = new Date(dose1Date);
+  newDate.setMonth(dose1Date.getMonth() + monthOffsets[j]);
+
+  updatedAppt[dateField] = dateObjToDateStr(newDate);
+  updatedAppt[statusField] = "🟡 Pending";
+}
+
+          rescheduledSomething = true;
+          break;
+        }
       }
     }
 
-    // 🟨 3) HEPA B 3-DOSE VACCINES
-    for (let i = 0; i < hepaFields.length; i++) {
-      const [dateField, statusField] = hepaFields[i];
-      const status = (apptToResched[statusField] || "").toLowerCase();
-
-      if (status === "missed") {
-        updatedAppt[dateField] = dateObjToDateStr(newDateObj);
-        updatedAppt[statusField] = "🟡 Pending";
-        rescheduledSomething = true;
-      }
-    }
-
+    // If nothing matched
     if (!rescheduledSomething) {
       alert("Only missed appointments can be rescheduled!");
       return;
@@ -159,7 +283,6 @@ const confirmReschedule = async () => {
 
     await invoke("update_appointment", { appointment: updatedAppt });
 
-    // refresh UI
     setShowReschedPopup(false);
     setShowEditPopup(false);
     localStorage.setItem("refreshScheduleFlag", Date.now().toString());
@@ -172,7 +295,6 @@ const confirmReschedule = async () => {
     alert("❌ Failed to reschedule: " + err);
   }
 };
-
 
 
 
@@ -244,10 +366,28 @@ const getApptScheduledDateStrings = (appt) => {
   }
 
   // 🟨 Hepatitis B multi-dose series
-  [appt.hepa_b_dose1, appt.hepa_b_dose2, appt.hepa_b_dose3].forEach((d) => {
-    const ds = normalizeToDateStr(d);
-    if (ds) arr.push(ds);
-  });
+ // 🟨 HEPATITIS B MULTI-DOSE SERIES
+const hepaPairs = [
+  ["hepa_b_dose1", "hepa_b_status1"],
+  ["hepa_b_dose2", "hepa_b_status2"],
+  ["hepa_b_dose3", "hepa_b_status3"],
+];
+
+for (const [doseField, statusField] of hepaPairs) {
+  const ds = normalizeToDateStr(appt[doseField]);
+  const s = (appt[statusField] || "").toLowerCase();
+
+  if (!ds) continue;
+
+  // INCLUDE ALL DOSES (pending, missed, done, upcoming)
+  // EXCEPT rescheduled/nullified ones.
+  if (s !== "rescheduled") {
+    arr.push(ds);
+  }
+}
+
+
+
 
   return Array.from(new Set(arr)).sort();
 };
@@ -272,24 +412,24 @@ const getStatusFieldForDate = (appt, selectedDate) => {
     }
   }
 
-  // 🩵 Fallback only for simple one-time appointments
-  const hasAnyDayField = Object.keys(dayMap).some((f) => appt[f]);
-  if (!hasAnyDayField && normalizeToDateStr(appt.schedule) === selectedDate) {
-    return "status";
-  }
-
-  // 🟩 REGULAR ONE-SHOT VACCINES
+   // 🟩 REGULAR ONE-SHOT VACCINES  ← MOVE THIS SECTION UP
   if (appt.regular_type && appt.regular_type !== "Hepa B Vaccine") {
     if (normalizeToDateStr(appt.regular_date) === selectedDate) {
       return "regular_status";
     }
   }
 
-  // 🟨 REGULAR HEPATITIS B (3 DOSES)
+  // 🟨 HEPATITIS B MULTI-DOSE  ← MOVE THIS UP TOO
   if (appt.regular_type === "Hepa B Vaccine") {
     if (normalizeToDateStr(appt.hepa_b_dose1) === selectedDate) return "hepa_b_status1";
     if (normalizeToDateStr(appt.hepa_b_dose2) === selectedDate) return "hepa_b_status2";
     if (normalizeToDateStr(appt.hepa_b_dose3) === selectedDate) return "hepa_b_status3";
+  }
+
+  // ❌ REMOVE / MODIFY THIS:
+  const hasAnyDayField = Object.keys(dayMap).some((f) => appt[f]);
+  if (!hasAnyDayField && normalizeToDateStr(appt.schedule) === selectedDate) {
+    return "status"; // ← WRONG FOR REGULAR/HEPA
   }
 
   return null;
@@ -505,7 +645,7 @@ useEffect(() => {
 
  // 🕒 Auto-miss checker (safe, instant + scheduled)
 useEffect(() => {
-  const TRIGGER_MINUTES = 0 * 60 + 45; // Default cutoff: 1:35 AM
+  const TRIGGER_MINUTES = 17 * 60; // Default cutoff: 1:35 AM
 
 const checkMissedAppointments = async () => {
   try {
@@ -549,7 +689,7 @@ const checkMissedAppointments = async () => {
   if (dateStr === todayStr) {
     const apptTime = new Date(appt[dateField]);
     if (isNaN(apptTime.getTime()) || apptTime.getHours() === 0) {
-      apptTime.setHours(0, 45, 0, 0);
+      apptTime.setHours(17, 0, 0, 0);
     }
     const apptMinutes = apptTime.getHours() * 60 + apptTime.getMinutes();
 
@@ -603,8 +743,8 @@ for (const [doseDateField, doseStatusField] of hepaDates) {
 
   if (!hDate) continue;
   if (["done", "✔️ done", "missed"].includes(hStatus)) continue;
-
-  if (hDate < todayStr) {
+  
+if (hDate && hStatus !== "🟡 pending" && !hStatus.includes("done")) {
     appt[doseStatusField] = "Missed";
     anyDayMissed = true;
   }
@@ -612,7 +752,7 @@ for (const [doseDateField, doseStatusField] of hepaDates) {
   if (hDate === todayStr) {
     const apptTime = new Date(appt[doseDateField]);
     if (isNaN(apptTime.getTime())) {
-      apptTime.setHours(0, 45, 0, 0);
+      apptTime.setHours(17, 0, 0, 0);
     }
 
     const apptMinutes =
@@ -754,7 +894,7 @@ if (arvAllDone || regularDone || hepaAllDone) {
   // 🕔 Schedule the next run at 1:35 AM
   const now = new Date();
   const target = new Date(now);
-  target.setHours(0, 45, 0, 0);
+  target.setHours(17, 0, 0, 0);
 
   if (now > target) {
     target.setDate(target.getDate() + 1);
@@ -854,33 +994,115 @@ const appointmentsToDisplay = useMemo(() => {
 
       let filteredAppts = dateFiltered;
 
-      if (activeTab === "appointments") {
-        filteredAppts = dateFiltered.filter((a) => {
-          const statusField = getStatusFieldForDate(a, sel);
-          if (!statusField) return false;
-          const s = (a[statusField] || "").trim().toLowerCase();
-         return ["", "pending", "🟡 pending", "🔴 upcoming", "upcoming", "in progress"].includes(s);
-        });
-      } else if (activeTab === "finished") {
-        filteredAppts = dateFiltered.filter((a) => {
-          const statusField = getStatusFieldForDate(a, sel);
-          if (!statusField) return false;
-          const s = (a[statusField] || "").trim().toLowerCase();
-          return ["✔️ done", "done", "finished"].includes(s);
-        });
-      } else if (activeTab === "missed") {
-        filteredAppts = dateFiltered.filter((a) => {
-          const statusField = getStatusFieldForDate(a, sel);
-          if (!statusField) return false;
-          const s = (a[statusField] || "").trim().toLowerCase();
-          return (
-  s === "missed" ||
-  ["day_zero_status", "day_three_status", "day_seven_status", "day_fourteen_status", "day_thirty_status"]
-    .some((fld) => (a[fld] || "").trim().toLowerCase() === "missed")
-);
+   if (activeTab === "appointments") {
+  filteredAppts = dateFiltered.filter((a) => {
+    const statusField = getStatusFieldForDate(a, sel);
 
-        });
+    // If ARV date matched → use ARV status
+    if (statusField) {
+      const s = (a[statusField] || "").trim().toLowerCase();
+      if (["✔️ done", "done", "finished"].includes(s)) return false;
+      if (s === "missed") return false;
+
+      return ["", "pending", "🟡 pending", "🔴 upcoming", "upcoming", "in progress"].includes(s);
+    }
+
+    // 🟦 REGULAR 1-SHOT VACCINE (fallback)
+    if (a.regular_type && a.regular_type !== "Hepa B Vaccine") {
+      const ds = normalizeToDateStr(a.regular_date);
+      if (ds === sel) {
+        const s = (a.regular_status || "").trim().toLowerCase();
+        if (s === "missed" || s.includes("done")) return false;
+        return true; // pending regular
       }
+    }
+
+    // 🟨 HEPA B 3-DOSE VACCINE (fallback)
+    if (a.regular_type === "Hepa B Vaccine") {
+      const doses = [
+        ["hepa_b_dose1", "hepa_b_status1"],
+        ["hepa_b_dose2", "hepa_b_status2"],
+        ["hepa_b_dose3", "hepa_b_status3"],
+      ];
+
+      for (const [dateField, statusFieldH] of doses) {
+        const ds = normalizeToDateStr(a[dateField]);
+        if (ds === sel) {
+          const s = (a[statusFieldH] || "").trim().toLowerCase();
+          if (s === "missed" || s.includes("done")) return false;
+          return true; // pending dose
+        }
+      }
+    }
+
+    return false;
+  });
+
+
+  } else if (activeTab === "finished") {
+  filteredAppts = dateFiltered.filter((a) => {
+    const statusField = getStatusFieldForDate(a, sel);
+    if (!statusField) return false;
+    const s = (a[statusField] || "").trim().toLowerCase();
+
+    // ANTI-RABIES done
+    if (["✔️ done", "done", "finished"].includes(s)) return true;
+
+    // REGULAR one-shot done
+    if (a.regular_type && a.regular_type !== "Hepa B Vaccine") {
+      return (a.regular_status || "").toLowerCase().includes("done");
+    }
+
+    // HEPA B any dose done
+    return (
+      (a.hepa_b_status1 || "").toLowerCase().includes("done") ||
+      (a.hepa_b_status2 || "").toLowerCase().includes("done") ||
+      (a.hepa_b_status3 || "").toLowerCase().includes("done")
+    );
+  });
+
+      } else if (activeTab === "missed") {
+  filteredAppts = dateFiltered.filter((a) => {
+    const sel = selectedDate;
+
+    // 🟥 ANTI-RABIES MISSED FOR THIS DAY ONLY
+    const arvMissed = [
+      ["day_zero_date", "day_zero_status"],
+      ["day_three_date", "day_three_status"],
+      ["day_seven_date", "day_seven_status"],
+      ["day_fourteen_date", "day_fourteen_status"],
+      ["day_thirty_date", "day_thirty_status"],
+    ].some(([dField, sField]) =>
+      normalizeToDateStr(a[dField]) === sel &&
+      (a[sField] || "").toLowerCase() === "missed"
+    );
+
+    if (arvMissed) return true;
+
+    // 🟦 REGULAR 1-SHOT (ONLY IF THE MISSED DOSE IS TODAY)
+    if (
+      a.regular_type &&
+      a.regular_type !== "Hepa B Vaccine" &&
+      normalizeToDateStr(a.regular_date) === sel &&
+      (a.regular_status || "").toLowerCase() === "missed"
+    ) {
+      return true;
+    }
+
+    // 🟨 HEPATITIS B 3 DOSES — STRICT DATE MATCH
+    const hepaMissed = [
+      ["hepa_b_dose1", "hepa_b_status1"],
+      ["hepa_b_dose2", "hepa_b_status2"],
+      ["hepa_b_dose3", "hepa_b_status3"],
+    ].some(([dField, sField]) =>
+      normalizeToDateStr(a[dField]) === sel &&    // 👈 THIS IS THE KEY
+      (a[sField] || "").toLowerCase() === "missed"
+    );
+
+    return hepaMissed;
+  });
+}
+
 
       if (filteredAppts.length === 0) return null;
       return { ...p, appointments: filteredAppts };
@@ -905,34 +1127,105 @@ const tabCounts = useMemo(() => {
   let pending = 0,
     finished = 0,
     missed = 0;
+for (const a of allAppts) {
 
-  for (const a of allAppts) {
-    const statusField = getStatusFieldForDate(a, selectedDate);
-    if (!statusField) continue;
+  // Strict matching: only count doses whose DATE matches selectedDate
+  const doseMatches = (() => {
+    const d = selectedDate;
 
-    const s = (a[statusField] || "").trim().toLowerCase();
+    // ARV
+    const arv = [
+      ["day_zero_date", "day_zero_status"],
+      ["day_three_date", "day_three_status"],
+      ["day_seven_date", "day_seven_status"],
+      ["day_fourteen_date", "day_fourteen_status"],
+      ["day_thirty_date", "day_thirty_status"],
+    ].find(([df, sf]) => normalizeToDateStr(a[df]) === d);
 
-    if (["✔️ done", "done", "finished"].includes(s)) {
-      finished++;
-    } else if (
-      s === "missed" ||
-      [
-        "day_zero_status",
-        "day_three_status",
-        "day_seven_status",
-        "day_fourteen_status",
-        "day_thirty_status",
-        "hepa_b_status1",
-        "hepa_b_status2",
-        "hepa_b_status3",
-        "regular_status",
-      ].some((fld) => (a[fld] || "").trim().toLowerCase() === "missed")
+    if (arv) return arv;
+
+    // Regular
+    if (
+      a.regular_type &&
+      a.regular_type !== "Hepa B Vaccine" &&
+      normalizeToDateStr(a.regular_date) === d
     ) {
-      missed++;
-    } else {
-      pending++;
+      return ["regular_date", "regular_status"];
     }
+
+    // Hepa B
+    const hepa = [
+      ["hepa_b_dose1", "hepa_b_status1"],
+      ["hepa_b_dose2", "hepa_b_status2"],
+      ["hepa_b_dose3", "hepa_b_status3"],
+    ].find(([df, sf]) => normalizeToDateStr(a[df]) === d);
+
+    return hepa || null;
+  })();
+
+  if (!doseMatches) continue;
+
+  const [dateField, statusField] = doseMatches;
+  const s = (a[statusField] || "").trim().toLowerCase();
+
+
+  const isFinished =
+    ["✔️ done", "done", "finished"].includes(s) ||
+    (a.regular_type &&
+      a.regular_type !== "Hepa B Vaccine" &&
+      (a.regular_status || "").toLowerCase().includes("done")) ||
+    [
+      a.hepa_b_status1,
+      a.hepa_b_status2,
+      a.hepa_b_status3,
+    ].some((x) => (x || "").toLowerCase().includes("done"));
+
+const isMissed = (() => {
+  const sel = selectedDate;
+
+  // 🟥 ARV missed only if date matches
+  const arvMissed = [
+    ["day_zero_date", "day_zero_status"],
+    ["day_three_date", "day_three_status"],
+    ["day_seven_date", "day_seven_status"],
+    ["day_fourteen_date", "day_fourteen_status"],
+    ["day_thirty_date", "day_thirty_status"],
+  ].some(([dField, sField]) =>
+    normalizeToDateStr(a[dField]) === sel &&
+    (a[sField] || "").toLowerCase() === "missed"
+  );
+
+  if (arvMissed) return true;
+
+  // 🟦 Regular 1-shot
+  if (
+    a.regular_type &&
+    a.regular_type !== "Hepa B Vaccine" &&
+    normalizeToDateStr(a.regular_date) === sel &&
+    (a.regular_status || "").toLowerCase() === "missed"
+  ) {
+    return true;
   }
+
+  // 🟨 Hepa B 3-dose
+  const hepaMissed = [
+    ["hepa_b_dose1", "hepa_b_status1"],
+    ["hepa_b_dose2", "hepa_b_status2"],
+    ["hepa_b_dose3", "hepa_b_status3"],
+  ].some(([dField, sField]) =>
+    normalizeToDateStr(a[dField]) === sel &&
+    (a[sField] || "").toLowerCase() === "missed"
+  );
+
+  return hepaMissed;
+})();
+
+  if (isFinished) finished++;
+  else if (isMissed) missed++;
+  else pending++;
+}
+
+  
 
   return { pending, finished, missed };
 }, [patients, selectedDate]);
@@ -1270,7 +1563,11 @@ if (a.regular_type === "Hepa B Vaccine") {
 
   if (status.includes("missed")) {
     return (
-      <button onClick={() => handleReschedule(selectedAppointment)}>
+      <button
+        onClick={() => {
+          handleReschedule(selectedAppointment);
+        }}
+      >
         Reschedule
       </button>
     );
@@ -1278,15 +1575,15 @@ if (a.regular_type === "Hepa B Vaccine") {
 
   return null;
 })()}
+
               <button
   onClick={() => {
-    if (!selectedPatient) return alert("No patient selected");
     navigate(`/dashboard/patient/${selectedPatient.id}`, {
-      state: { selectedPatient },
+      state: { selectedPatient, openAppointmentId: selectedAppointment.id },
     });
   }}
 >
-  Go to Patient
+  View Appointment Details
 </button>
             </div>
           </div>

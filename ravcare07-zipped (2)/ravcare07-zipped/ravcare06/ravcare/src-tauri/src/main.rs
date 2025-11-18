@@ -287,6 +287,8 @@ fn get_patient_with_user(id: i64) -> Result<serde_json::Value, String> {
     let secret_key = env::var("SECRET_KEY").map_err(|e| e.to_string())?;
     let conn = Connection::open(DB_PATH).map_err(|e| format!("DB open error: {}", e))?;
 
+    println!("🔍 get_patient_with_user called for id: {}", id);
+
     let mut stmt = conn.prepare(
         "SELECT 
     p.id, p.first_name, p.last_name, p.middle_name,
@@ -301,8 +303,17 @@ fn get_patient_with_user(id: i64) -> Result<serde_json::Value, String> {
 
     let result = stmt.query_row(params![id], |row| {
         let encrypted_pw: Option<String> = row.get(16).ok();
-        let decrypted_pw = match encrypted_pw {
-            Some(ref pw) => decrypt_password(pw, &secret_key).ok(),
+        let decrypted_pw = match &encrypted_pw {
+            Some(pw) => match decrypt_password(pw, &secret_key) {
+                Ok(p) => {
+                    println!("✅ Decrypted password: {}", p);
+                    Some(p)
+                }
+                Err(e) => {
+                    println!("❌ Decrypt failed: {}", e);
+                    None
+                }
+            },
             None => None,
         };
 

@@ -6,6 +6,7 @@ import { useParams } from "react-router-dom";
 import { PiEyeLight } from "react-icons/pi";
 import { PiEyeClosedLight } from "react-icons/pi";
 import { useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 
 
 
@@ -255,6 +256,29 @@ const splitValues = (str) =>
   }
 }, [viewArchived]);
 const { id } = useParams();
+
+
+const location = useLocation();
+const openAppointmentId = location.state?.openAppointmentId;
+
+useEffect(() => {
+  if (!openAppointmentId || appointments.length === 0) return;
+
+  const target = appointments.find(a => a.id === openAppointmentId);
+  if (!target) return;
+
+  if (target.regular_type) {
+    setViewRegularData(target);
+    setShowViewRegular(true);
+  } else {
+    setShowViewAppointment(target);
+  }
+
+  // Clear state so refresh doesn't reopen
+  window.history.replaceState({}, document.title);
+}, [openAppointmentId, appointments]);
+
+
 
 
 // 👇 Automatically open patient view if coming from a QR redirect
@@ -524,6 +548,8 @@ if (latestAntiRabies) {
       setNewRIGDate("");
       setNewTetanusRoute("IM");
       setNewTetanusDate("");
+      setNewInjectionSite("");
+      setNewVaccRoute("");
     } else {
       setEditAppointment(null);
     }
@@ -919,6 +945,41 @@ const filteredAppointments = appointments
     const db = new Date(b.schedule || b.regular_date);
     return apptSortOrder === "newest" ? db - da : da - db;
   });
+
+const getRegularStatusDisplay = (appt) => {
+  if (!appt.regular_type) return "—";
+
+  // 1) Single-dose regular vaccines
+  if (appt.regular_type !== "Hepa B Vaccine") {
+    return appt.regular_status || "🟡 Pending";
+  }
+
+  // 2) Hepa B — combine statuses
+  const doses = [
+    { label: "Dose 1", status: appt.hepa_b_status1 },
+    { label: "Dose 2", status: appt.hepa_b_status2 },
+    { label: "Dose 3", status: appt.hepa_b_status3 },
+  ];
+
+  // Show summary, e.g. "Dose 2 Missed", "All Done", etc.
+  if (doses.every(d => (d.status || "").toLowerCase().includes("done"))) {
+    return "✔️ All Doses Done";
+  }
+
+  const missed = doses.find(d => (d.status || "").toLowerCase() === "missed");
+  if (missed) return `${missed.label}: Missed`;
+
+  const pending = doses.find(d => (d.status || "").toLowerCase().includes("pending"));
+  if (pending) return `${pending.label}: 🟡 Pending`;
+
+  const upcoming = doses.find(d => (d.status || "").toLowerCase().includes("upcoming"));
+  if (upcoming) return `${upcoming.label}: 🔴 Upcoming`;
+
+  return "—";
+};
+
+
+
 
   // ------------------ JSX RETURN ------------------
   return (
@@ -1542,14 +1603,14 @@ const filteredAppointments = appointments
 
           <div className="containerappt2">
             <div className="textbtncont">
-
-  <h3>Appointment History</h3>
+              <h3>Appointment History</h3>
 
   {/* SORT + FILTER CONTROLS */}
+  <div className="apptHeaderBar">
   <div className="apptFilterControls">
     
     {/* Sort */}
-    <div className="sortOptions">
+    <div className="sortOptions1">
       <label>
         <input
           type="radio"
@@ -1558,7 +1619,7 @@ const filteredAppointments = appointments
           checked={apptSortOrder === "newest"}
           onChange={(e) => setApptSortOrder(e.target.value)}
         />
-        Newest
+        Newest 
       </label>
 
       <label>
@@ -1569,13 +1630,13 @@ const filteredAppointments = appointments
           checked={apptSortOrder === "oldest"}
           onChange={(e) => setApptSortOrder(e.target.value)}
         />
-        Oldest
+        Oldest 
       </label>
     </div>
 
     {/* Filter */}
     <select
-      className="apptFilterDropdown"
+      className="apptFilterDropdown1"
       value={apptFilterType}
       onChange={(e) => setApptFilterType(e.target.value)}
     >
@@ -1593,7 +1654,7 @@ const filteredAppointments = appointments
 
 
 
-  <h3>Appointment History</h3>
+  
   <div className="btnapptadd">
            <button
   className="AddAppointmentBtn"
@@ -1603,7 +1664,7 @@ const filteredAppointments = appointments
 >
   Add Appointment
 </button>
-
+</div>
 </div>
 </div>
 
@@ -1683,69 +1744,38 @@ const filteredAppointments = appointments
         return "🔴 Upcoming";
       };
 
-      // 🧠 Auto-fill logic (per vaccine type)
-      if (showViewAppointment.prophylaxis_type === "Booster") {
-        handleAutoFill("day_zero_given_date", showViewAppointment.day_zero_date);
-        handleAutoFill(
-          "day_seven_given_date",
-          showViewAppointment.day_seven_date,
-          showViewAppointment.day_zero_given_date
-        );
-        handleAutoFill(
-          "day_thirty_given_date",
-          showViewAppointment.day_thirty_date,
-          showViewAppointment.day_seven_given_date
-        );
-      } else {
-        handleAutoFill("day_zero_given_date", showViewAppointment.day_zero_date);
-        handleAutoFill(
-          "day_three_given_date",
-          showViewAppointment.day_three_date,
-          showViewAppointment.day_zero_given_date
-        );
-        handleAutoFill(
-          "day_seven_given_date",
-          showViewAppointment.day_seven_date,
-          showViewAppointment.day_three_given_date
-        );
-        handleAutoFill(
-          "day_fourteen_given_date",
-          showViewAppointment.day_fourteen_date,
-          showViewAppointment.day_seven_given_date
-        );
-        handleAutoFill(
-          "day_thirty_given_date",
-          showViewAppointment.day_thirty_date,
-          showViewAppointment.day_fourteen_given_date
-        );
-      }
-
       // ✅ renderRow now only uses the true "given" date (not scheduled)
-      const renderRow = (label, schedKey, givenKey, statusKey, prevGivenKey) => (
-        <div className="prophylaxis-item-grid" key={label}>
-          <span>
-            {label}: {showViewAppointment[schedKey] || "—"}
-          </span>
+    const renderRow = (label, schedKey, givenKey, statusKey, prevGivenKey) => {
+  const scheduled = showViewAppointment[schedKey];
+  const given = showViewAppointment[givenKey];
+  const status = showViewAppointment[statusKey];
 
-          <input
-            type="date"
-            value={showViewAppointment[givenKey] || ""}
-            readOnly
-            disabled={
-              !isDateAvailable(showViewAppointment[schedKey]) ||
-              (prevGivenKey && !showViewAppointment[prevGivenKey])
-            }
-          />
+  return (
+    <div className="prophylaxis-item-grid" key={label}>
+      <span>
+        {label}: {scheduled || "—"}
+      </span>
 
-          <span>
-            {getStatus(
-              showViewAppointment[givenKey],
-              showViewAppointment[schedKey],
-              showViewAppointment[statusKey]
-            )}
-          </span>
-        </div>
-      );
+      <input
+        type="date"
+        value={given || ""}
+        readOnly
+        disabled
+        style={{ background: "#f5f5f5", cursor: "not-allowed" }}
+      />
+
+      <span>
+        {status
+          ? status
+          : given
+          ? "✔️ Done"
+          : isDateAvailable(scheduled)
+          ? "🟡 Pending"
+          : "🔴 Upcoming"}
+      </span>
+    </div>
+  );
+};
 
       // ✅ Render per prophylaxis type
       if (showViewAppointment.prophylaxis_type === "Booster") {
@@ -1791,7 +1821,14 @@ const filteredAppointments = appointments
   </div>
 
 <button
-  className="save-dates-btn"
+  className="SaveBtn"
+  disabled={
+    showViewAppointment.day_zero_status === "Missed" ||
+    showViewAppointment.day_three_status === "Missed" ||
+    showViewAppointment.day_seven_status === "Missed" ||
+    showViewAppointment.day_fourteen_status === "Missed" ||
+    showViewAppointment.day_thirty_status === "Missed"
+  }
   onClick={async () => {
     try {
       const today = new Date();
@@ -2121,6 +2158,7 @@ body {
         <h3>Regular Vaccination Details</h3>
 
 <p><b>Vaccine Type:</b> {viewRegularData.regular_type}</p>
+<p><b>Injection Site:</b> {viewRegularData.injection_site}</p>
 
 {/* ------------------------------ */}
 {/* FLU VACCINE                   */}
@@ -2255,11 +2293,17 @@ body {
     </div>
     
     <button
-      className="SaveBtn"
-      onClick={() => markRegularDone(viewRegularData)}
-    >
-      Mark Done
-    </button>
+  className="SaveBtn"
+  disabled={
+    viewRegularData.hepa_b_status1 === "Missed" ||
+    viewRegularData.hepa_b_status2 === "Missed" ||
+    viewRegularData.hepa_b_status3 === "Missed"
+  }
+  onClick={() => markRegularDone(viewRegularData)}
+>
+  Mark Done
+</button>
+
   
 </>
 )}
@@ -2627,7 +2671,7 @@ onClick={() => {
      <label>Injection Site:</label>
   <select
     value={newInjectionSite}
-    onChange={(e) => setNewInjectionSite(e.target.value)}
+    onChange={(e) => setNewInjectionSite(e.target.value)}required
   >
     <option value="" disabled hidden>Select site</option>
     <option value="Left Arm">Left Arm</option>
@@ -2654,7 +2698,7 @@ onClick={() => {
            <label>Injection Site:</label>
   <select
     value={newInjectionSite}
-    onChange={(e) => setNewInjectionSite(e.target.value)}
+    onChange={(e) => setNewInjectionSite(e.target.value)}required
   >
     <option value="" disabled hidden>Select site</option>
     <option value="Left Arm">Left Arm</option>
@@ -2686,7 +2730,7 @@ onClick={() => {
            <label>Injection Site:</label>
   <select
     value={newInjectionSite}
-    onChange={(e) => setNewInjectionSite(e.target.value)}
+    onChange={(e) => setNewInjectionSite(e.target.value)}required
   >
     <option value="" disabled hidden>Select site</option>
     <option value="Left Arm">Left Arm</option>
@@ -2735,7 +2779,7 @@ onClick={() => {
     <label>Injection Site:</label>
   <select
     value={newInjectionSite}
-    onChange={(e) => setNewInjectionSite(e.target.value)}
+    onChange={(e) => setNewInjectionSite(e.target.value)}required
   >
     <option value="" disabled hidden>Select site</option>
     <option value="Left Arm">Left Arm</option>
@@ -2798,13 +2842,16 @@ onClick={() => {
           <label>Date of Exposure</label>
 <input
   type="date"
-  value={newDateOfExposure || ""}
+  value={newDateOfExposure}
   onChange={(e) => setNewDateOfExposure(e.target.value)}
+  max={getTodayDate()}   // 🔥 limit to today or earlier
   required
 />
 
+
           <select value={newTypeofBite} onChange={(e) => setNewTypeofBite(e.target.value)} required>
             <option value="" disabled hidden>Type of Bite</option>
+            <option value="None">None</option>
             <option value="Laceration">Laceration</option>
             <option value="Abrasion">Abrasion</option>
             <option value="Puncture">Puncture</option>
@@ -2815,6 +2862,7 @@ onClick={() => {
 
           <select value={newSite} onChange={(e) => setNewSite(e.target.value)} required>
             <option value="" disabled hidden>Site of Bite</option>
+            <option value="None">None</option>
             <option value="Leg">Leg</option>
             <option value="Hand">Hand</option>
             <option value="Neck">Neck</option>
@@ -2826,6 +2874,7 @@ onClick={() => {
 
           <select value={newBitingAnimal} onChange={(e) => setNewBitingAnimal(e.target.value)} required>
             <option value="" disabled hidden>Biting Animal</option>
+            <option value="None">None</option>
             <option value="Cat">Cat</option>
             <option value="Dog">Dog</option>
             <option value="Bat">Bat</option>
@@ -2839,6 +2888,7 @@ onClick={() => {
 
           <select value={newCategory} onChange={(e) => setNewCategory(e.target.value)} required>
             <option value="" disabled hidden>Category</option>
+            <option value="None">None</option>
             <option value="I">I</option>
             <option value="II">II</option>
             <option value="III">III</option>
@@ -2876,6 +2926,8 @@ onClick={() => {
     setNewPreviousAntiRabiesVaccine("");
     setSelectedProphylaxisType("");
     setNewTetanusToxoid(false);
+    setNewInjectionSite("");
+      setNewVaccRoute("");
   }
   setEditAppointment(null);
 }}
@@ -3019,8 +3071,7 @@ onClick={() => {
         <label>Tetanus Injection Site:</label>
     <select
       value={tetanusInjectionSite}
-      onChange={(e) => setTetanusInjectionSite(e.target.value)}
-    >
+      onChange={(e) => setTetanusInjectionSite(e.target.value)} required>
       <option value="" disabled hidden>Select site</option>
       <option value="Left Arm">Left Arm</option>
       <option value="Right Arm">Right Arm</option>
