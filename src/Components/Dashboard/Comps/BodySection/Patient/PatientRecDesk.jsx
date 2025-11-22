@@ -2788,7 +2788,6 @@ body {
             <span>Age</span>
             <span>Date Created</span>
             <span>QR Code Reference</span>
-            <span>Action</span>
           </div>
 
     {patients.map((p) => (
@@ -2808,52 +2807,8 @@ body {
   <p style={{ fontSize: "0.8em" }}>Scan QR</p>
 </div>
     <div style={{ display: "flex", gap: "5px" }}>
-      <button onClick={() => setShowView(p)}></button>
-      <button
-  onClick={async () => {
-    try {
-      const fullPatient = await invoke("get_patient_with_user", { id: p.id });
-      setShowView((prev) => ({
-        ...prev,
-        ...fullPatient, // merge new data into existing state
-      }));
-      const appts = await getAppointments(p.id);
-      setAppointments(appts);
-    } catch (err) {
-      console.error("Failed to load patient:", err);
-      alert("Failed to load patient details.");
-    }
-  }}
->
-  View
-</button>
 
- {!viewArchived ? (
-    <button
-  onClick={async () => {
-    if (window.confirm(`Archive ${p.first_name} ${p.last_name}?`)) {
-      await archivePatient(p.id);
-      alert("Archived successfully!");
-      if (viewArchived) loadArchivedPatients();
-      else loadPatients();
-        }
-      }}
-    >
-      Archive
-    </button>
-  ) : (
-   <button
-  onClick={async () => {
-    if (window.confirm(`Restore ${p.first_name} ${p.last_name}?`)) {
-      await restorePatient(p.id);
-      alert("Restored successfully!");
-      loadArchivedPatients(); // reload the archive view
-        }
-      }}
-    >
-      Restore
-    </button>
-  )}
+
       
      
     </div>

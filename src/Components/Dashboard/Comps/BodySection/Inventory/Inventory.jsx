@@ -1,295 +1,226 @@
-"use client"
+import React, { useState, useEffect } from "react";
+import "./Inventory.css";
+import { VACCINES } from "../../../../../utils/vaccines";
+import { invoke } from "@tauri-apps/api/core";
 
-import { useState, useEffect } from "react"
-import "./Inventory.css"
-
+// Inventory manager singleton (other components can import inventoryManager)
 export const createInventoryManager = () => {
-  let inventoryState = null
+  let inventoryState = null; // will hold { refresh }
 
   return {
     setInventoryState: (state) => {
-      inventoryState = state
+      inventoryState = state;
     },
-    reduceInventoryByRoute: (vaccineId, route, setStock, setLogs, VACCINES) => {
-      const vaccine = VACCINES.find((v) => v.id === vaccineId)
-      if (!vaccine) return
 
-      const amount = route === "ID" ? 0.1 : 1 // ID: 0.1mL, IM: 1mL
-      const doseType = route === "ID" ? "ID" : "IM"
-
-      setLogs((prev) => [
-        {
-          id: prev.length + 1,
-          timestamp: new Date().toLocaleString(),
-          action: `Dose Administered (${doseType})`,
-          vaccine: vaccine.name,
-          amount: amount,
-          user: "Rabvax Staff",
-        },
-        ...prev,
-      ])
-
-      // Decrease stock
-      setStock((prev) => ({
-        ...prev,
-        [vaccineId]: Math.max(0, (prev[vaccineId] || 0) - amount),
-      }))
+    async reduceByRoute(vaccineId, route = "IM") {
+      if (!inventoryState) return console.error("Inventory manager not initialized");
+      const amount = route === "ID" ? 0.1 : 1;
+      try {
+        await invoke("change_inventory_amount", { id: vaccineId, delta: -amount });
+        if (inventoryState.refresh) await inventoryState.refresh();
+      } catch (e) {
+        console.error("Failed to reduce inventory:", e);
+      }
     },
-  }
-}
+
+    async addStock(vaccineId, amount = 1) {
+      if (!inventoryState) return console.error("Inventory manager not initialized");
+      try {
+        await invoke("change_inventory_amount", { id: vaccineId, delta: amount });
+        if (inventoryState.refresh) await inventoryState.refresh();
+      } catch (e) {
+        console.error("Failed to add stock:", e);
+      }
+    },
+  };
+};
+
+export const inventoryManager = createInventoryManager();
 
 export default function Inventory() {
-  const [activeTab, setActiveTab] = useState("stock")
+  const [activeTab, setActiveTab] = useState("stock");
 
-  // Available vaccines
-  const VACCINES = [
-    { id: "vaxirab", name: "Vaxirab N", category: "Anti-Rabies" },
-    { id: "pcv13", name: "PCV13", category: "Pneumonia Vaccine" },
-    { id: "ppsv23", name: "PPSV23", category: "Pneumonia Vaccine" },
-    { id: "tetanus", name: "Tetanus Toxoid", category: "Anti Tetanus" },
-    { id: "ats", name: "ATS", category: "Anti Tetanus" },
-    { id: "htig", name: "HTIG", category: "Anti Tetanus" },
-    { id: "hepab", name: "Hepa B Vaccine", category: "Hepatitis B" },
-    { id: "flu", name: "Flu Vaccine", category: "Influenza" },
-  ]
+  // stock object keyed by vaccine id
+  const [stock, setStock] = useState(() => {
+    const initial = {};
+    (VACCINES || []).forEach((v) => (initial[v.id] = 0));
+    return initial;
+  });
 
-  const [stock, setStock] = useState({
-    vaxirab: 10,
-    pcv13: 5,
-    ppsv23: 5,
-    tetanus: 8,
-    ats: 3,
-    htig: 3,
-    hepab: 6,
-    flu: 12,
-  })
+  // logs from inventory_logs table
+  const [logs, setLogs] = useState([]);
+  const [newStock, setNewStock] = useState("");
+  const [selectedVaccine, setSelectedVaccine] = useState((VACCINES && VACCINES[0] && VACCINES[0].id) || "vaxirab");
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const [newStock, setNewStock] = useState("")
-  const [selectedVaccine, setSelectedVaccine] = useState("vaxirab")
-  const [showCreateForm, setShowCreateForm] = useState(false)
+  // Modal state for editing absolute stock
+  const [editingVaccine, setEditingVaccine] = useState(null);
+  const [editAmountInput, setEditAmountInput] = useState("");
 
-  // 🔧 HIDDEN: Open vial logic (ID use) - kept for calculations but not displayed
-  const [openVial, setOpenVial] = useState({
-    name: "Vaxirab N",
-    volume: 1.0,
-    status: "Closed",
-    openedAt: null,
-    spoiled: false,
-    completed: false,
-    spoiledAmount: 0,
-  })
-
-  // 🔧 HIDDEN: Unopened vial logic (IM use) - kept for calculations but not displayed
-  const [unopenedVial, setUnopenedVial] = useState({
-    name: "Vaxirab N",
-    status: "Closed",
-    spoiled: false,
-    completed: false,
-  })
-
-  // 📋 Activity Logs
-  const [logs, setLogs] = useState([
-    {
-      id: 1,
-      timestamp: new Date().toLocaleString(),
-      action: "Stock Added",
-      vaccine: "Vaxirab N",
-      amount: 10,
-      user: "Admin",
-    },
-  ])
-
-  // 🕒 Timer logic for spoilage (6-hour) - HIDDEN
-  useEffect(() => {
-    if (!openVial.openedAt || openVial.spoiled || openVial.completed) return
-    const timer = setInterval(() => {
-      const elapsed = Date.now() - openVial.openedAt
-      const sixHours = 6 * 60 * 60 * 1000
-      if (elapsed >= sixHours) {
-        setOpenVial((prev) => ({
-          ...prev,
-          spoiled: true,
-          status: "Spoiled",
-          spoiledAmount: prev.volume,
-        }))
-      }
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [openVial])
-
-  // Real-time ticking countdown - HIDDEN
-  const [timeLeft, setTimeLeft] = useState("Not opened")
-
-  useEffect(() => {
-    if (!openVial.openedAt || openVial.spoiled || openVial.completed) return
-
-    const tick = () => {
-      const elapsed = Date.now() - openVial.openedAt
-      const sixHours = 6 * 60 * 60 * 1000
-      const remaining = sixHours - elapsed
-
-      if (remaining <= 0) {
-        setOpenVial((prev) => ({
-          ...prev,
-          spoiled: true,
-          status: "Spoiled",
-          spoiledAmount: prev.volume,
-        }))
-        setTimeLeft("Expired")
-        return
-      }
-
-      const hours = Math.floor(remaining / (1000 * 60 * 60))
-      const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60))
-      const seconds = Math.floor((remaining % (1000 * 60)) / 1000)
-      setTimeLeft(
-        `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`,
-      )
+  // load inventory rows from SQLite via Tauri
+  const loadInventory = async () => {
+    try {
+      setLoading(true);
+      const rows = await invoke("get_inventory"); // [{id, name, amount, last_edited}, ...]
+      const newStock = {};
+      (rows || []).forEach((r) => {
+        newStock[r.id] = Number(r.amount ?? 0);
+      });
+      setStock((prev) => ({ ...prev, ...newStock }));
+    } catch (err) {
+      console.error("Failed to load inventory:", err);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    tick()
-    const timer = setInterval(tick, 1000)
-    return () => clearInterval(timer)
-  }, [openVial.openedAt, openVial.spoiled, openVial.completed])
+  // load inventory logs
+  const loadLogs = async () => {
+    try {
+      const rows = await invoke("get_inventory_logs"); // expects [{id, timestamp, action, vaccine, amount, user}, ...]
+      setLogs(rows || []);
+    } catch (err) {
+      console.error("Failed to load inventory logs:", err);
+    }
+  };
 
-  // 💉 Give ID dose (HIDDEN) - kept for calculations
-  const handleIDDose = () => {
-    if (openVial.spoiled || openVial.completed) return
-    setOpenVial((prev) => {
-      const newVolume = Number.parseFloat((prev.volume - 0.1).toFixed(1))
+  // on mount, load DB and wire inventoryManager
+  useEffect(() => {
+    const refresh = async () => {
+      await Promise.all([loadInventory(), loadLogs()]);
+    };
+    refresh();
+    inventoryManager.setInventoryState({ refresh });
+  }, []);
 
-      if (newVolume <= 0) {
-        setOpenVial({
-          ...prev,
-          volume: 0.0,
-          status: "Completed",
-          completed: true,
-        })
+  // Add stock (UI)
+  const handleAddStock = async () => {
+  const amount = Number.parseFloat(newStock);
+  if (Number.isNaN(amount) || amount <= 0) return alert("Enter a positive amount");
 
-        setTimeout(() => {
-          setOpenVial({
-            ...prev,
-            volume: 1.0,
-            status: "Closed",
-            openedAt: null,
-            spoiled: false,
-            completed: false,
-            spoiledAmount: 0,
-          })
-        }, 3000)
-        return { ...prev, volume: 0.0, completed: true, status: "Completed" }
-      }
+  try {
+    // persist change
+    await invoke("change_inventory_amount", { id: selectedVaccine, delta: amount });
 
-      return {
-        ...prev,
-        volume: newVolume,
-        status: "Opened",
-        openedAt: prev.openedAt || Date.now(),
-      }
-    })
+    // add a log row in sqlite
+    await invoke("add_inventory_log", {
+      action: "Stock Added",
+      vaccine: selectedVaccine,
+      amount: amount,
+      user: "Admin",
+    });
+
+    // optimistic UI update
+    setStock((prev) => ({
+      ...prev,
+      [selectedVaccine]: (prev[selectedVaccine] || 0) + amount,
+    }));
+
+    setLogs((prev) => [
+      {
+        id: Date.now(), // temporary ID
+        timestamp: new Date().toLocaleString(),
+        action: "Stock Added",
+        vaccine: selectedVaccine,
+        amount,
+        user: "Admin",
+      },
+      ...prev,
+    ]);
+
+    setNewStock("");
+    setShowCreateForm(false);
+
+  } catch (err) {
+    console.error("Failed to add stock:", err);
+    alert("Failed to add stock: " + err);
   }
+};
 
-  // 💉 Give IM dose (HIDDEN) - kept for calculations
-  const handleIMDose = () => {
-    if (stock.vaxirab <= 0) return
-    setStock((prev) => ({ ...prev, vaxirab: prev.vaxirab - 1 }))
-    setUnopenedVial({
-      ...unopenedVial,
-      status: "Completed",
-      completed: true,
-    })
 
-    setTimeout(() => {
-      setUnopenedVial({
-        name: "Vaxirab N",
-        status: "Closed",
-        spoiled: false,
-        completed: false,
-      })
-    }, 30000)
-  }
+  // Log a dose (IM / ID) from UI table
+  const handleLogDose = async (vaccineId, doseType = "IM") => {
+    const amount = doseType === "ID" ? 0.1 : 1;
+    try {
+      await invoke("change_inventory_amount", { id: vaccineId, delta: -amount });
 
-  // ➕ Add stock
-  const handleAddStock = () => {
-    const amount = Number.parseInt(newStock)
-    if (!isNaN(amount) && amount > 0) {
-      setStock((prev) => ({
-        ...prev,
-        [selectedVaccine]: (prev[selectedVaccine] || 0) + amount,
-      }))
+      await invoke("add_inventory_log", {
+        action: `Dose Administered (${doseType})`,
+        vaccine: vaccineId,
+        amount: -amount,
+        user: "Rabvaxx Staff",
+      });
 
-      const vaccine = VACCINES.find((v) => v.id === selectedVaccine)
+      setStock((prev) => ({ ...prev, [vaccineId]: Math.max(0, (prev[vaccineId] || 0) - amount) }));
       setLogs((prev) => [
         {
-          id: prev.length + 1,
+          id: (prev && prev.length ? prev[0].id + 1 : prev.length + 1),
           timestamp: new Date().toLocaleString(),
-          action: "Stock Added",
-          vaccine: vaccine?.name || "Unknown",
-          amount: amount,
+          action: `Dose Administered (${doseType})`,
+          vaccine: vaccineId,
+          amount: -amount,
+          user: "Rabvaxx Staff",
+        },
+        ...prev,
+      ]);
+    } catch (err) {
+      console.error("Failed to log dose:", err);
+      alert("Failed to update inventory: " + err);
+    }
+  };
+
+  // Open edit modal (set absolute amount)
+  const openEdit = (v) => {
+    setEditingVaccine(v.id);
+    setEditAmountInput(String(stock[v.id] ?? 0));
+  };
+
+  // Apply absolute edit: compute delta and call change_inventory_amount
+  const applyEdit = async () => {
+    const id = editingVaccine;
+    const newAmount = Number.parseFloat(editAmountInput);
+    if (Number.isNaN(newAmount) || newAmount < 0) return alert("Enter a valid non-negative number");
+    const current = Number(stock[id] ?? 0);
+    const delta = newAmount - current;
+
+    try {
+      if (delta !== 0) {
+        await invoke("change_inventory_amount", { id, delta });
+        await invoke("add_inventory_log", {
+          action: "Stock Edited",
+          vaccine: id,
+          amount: delta,
+          user: "Admin",
+        });
+      }
+
+      // refresh local state (optimistic update then ensure from DB next)
+      setStock((prev) => ({ ...prev, [id]: newAmount }));
+      setLogs((prev) => [
+        {
+          id: (prev && prev.length ? prev[0].id + 1 : prev.length + 1),
+          timestamp: new Date().toLocaleString(),
+          action: "Stock Edited",
+          vaccine: id,
+          amount: delta,
           user: "Admin",
         },
         ...prev,
-      ])
+      ]);
 
-      setShowCreateForm(false)
-      setNewStock("")
+      setEditingVaccine(null);
+      setEditAmountInput("");
+    } catch (err) {
+      console.error("Failed to edit stock:", err);
+      alert("Failed to edit stock: " + err);
     }
-  }
-
-  // 📝 Log a dose administration
-  const handleLogDose = (vaccineId, doseType) => {
-    const vaccine = VACCINES.find((v) => v.id === vaccineId)
-    if (!vaccine) return
-
-    setLogs((prev) => [
-      {
-        id: prev.length + 1,
-        timestamp: new Date().toLocaleString(),
-        action: `Dose Administered (${doseType})`,
-        vaccine: vaccine.name,
-        amount: 1,
-        user: "Rabvaxx Staff",
-      },
-      ...prev,
-    ])
-
-    // Decrease stock
-    setStock((prev) => ({
-      ...prev,
-      [vaccineId]: Math.max(0, (prev[vaccineId] || 0) - 1),
-    }))
-  }
-
-  const reduceInventoryByRoute = (vaccineId, route) => {
-    const vaccine = VACCINES.find((v) => v.id === vaccineId)
-    if (!vaccine) return
-
-    const amount = route === "ID" ? 0.1 : 1 // ID: 0.1mL, IM: 1mL
-    const doseType = route === "ID" ? "ID" : "IM"
-
-    setLogs((prev) => [
-      {
-        id: prev.length + 1,
-        timestamp: new Date().toLocaleString(),
-        action: `Dose Administered (${doseType})`,
-        vaccine: vaccine.name,
-        amount: amount,
-        user: "Rabvaxx Staff",
-      },
-      ...prev,
-    ])
-
-    // Decrease stock (for ID, we reduce by 0.1 unit; for IM, by 1 unit)
-    setStock((prev) => ({
-      ...prev,
-      [vaccineId]: Math.max(0, (prev[vaccineId] || 0) - amount),
-    }))
-  }
+  };
 
   return (
     <div className="invDiv">
       <div className="container">
-        <h2>Vaccine Inventory Management</h2>
+        <h2>Vaccine Inventory Management {loading ? "(loading...)" : ""}</h2>
 
         <div className="tabButtons">
           <button className={activeTab === "stock" ? "activeTab" : ""} onClick={() => setActiveTab("stock")}>
@@ -298,67 +229,60 @@ export default function Inventory() {
           <button className={activeTab === "logs" ? "activeTab" : ""} onClick={() => setActiveTab("logs")}>
             Logs
           </button>
+          <button className="createBtn" onClick={() => setShowCreateForm(true)}>
+            Add Stock
+          </button>
         </div>
 
-        {/* --- STOCK TAB --- */}
         {activeTab === "stock" && (
           <div className="tabContent">
-            <h3>Vaccine Stock Management</h3>
+            <h3>Vaccine Stock</h3>
 
-            <div className="vaccineGrid">
-              {VACCINES.map((vaccine) => (
-                <div key={vaccine.id} className="vaccineCard">
-                  <div className="vaccineHeader">
-                    <h4>{vaccine.name}</h4>
-                    <span className="category">{vaccine.category}</span>
-                  </div>
-                  <div className="vaccineInfo">
-                    <p className="stockAmount">
-                      <strong>{stock[vaccine.id] || 0}</strong> units
-                    </p>
-                  </div>
-                  <div className="vaccineActions">
-                    <button
-                      className="doseBtn"
-                      onClick={() => handleLogDose(vaccine.id, "IM")}
-                      disabled={stock[vaccine.id] <= 0}
-                    >
-                      Administer Dose
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <table className="stockTable">
+              <thead>
+                <tr>
+                  <th>Vaccine</th>
+                  <th>Category</th>
+                  <th>Amount</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
 
-            <div className="actionButtons">
-              <button className="createBtn" onClick={() => setShowCreateForm(true)}>
-                Add Stock
-              </button>
-            </div>
+              <tbody>
+                {VACCINES.map((v) => (
+                  <tr key={v.id}>
+                    <td>{v.name}</td>
+                    <td>{v.category}</td>
+                    <td>{Number((stock[v.id] ?? 0)).toFixed(1)}</td>
+                    <td>
+                      <button onClick={() => openEdit(v)}>Edit</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
             {showCreateForm && (
               <div className="popup">
                 <div className="popupForm">
                   <h4>Add Stock</h4>
+
                   <div className="formGroup">
                     <label>Select Vaccine:</label>
                     <select value={selectedVaccine} onChange={(e) => setSelectedVaccine(e.target.value)}>
-                      {VACCINES.map((vaccine) => (
-                        <option key={vaccine.id} value={vaccine.id}>
-                          {vaccine.name}
+                      {VACCINES.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name}
                         </option>
                       ))}
                     </select>
                   </div>
+
                   <div className="formGroup">
                     <label>Amount:</label>
-                    <input
-                      type="number"
-                      placeholder="Enter amount"
-                      value={newStock}
-                      onChange={(e) => setNewStock(e.target.value)}
-                    />
+                    <input type="number" placeholder="Enter amount" value={newStock} onChange={(e) => setNewStock(e.target.value)} />
                   </div>
+
                   <div className="popupActions">
                     <button onClick={handleAddStock} className="addBtn">
                       Add
@@ -370,10 +294,26 @@ export default function Inventory() {
                 </div>
               </div>
             )}
+
+            {/* Edit modal */}
+            {editingVaccine && (
+              <div className="popup">
+                <div className="popupForm">
+                  <h4>Edit Stock for {VACCINES.find((x) => x.id === editingVaccine)?.name}</h4>
+                  <div className="formGroup">
+                    <label>Amount (absolute):</label>
+                    <input type="number" value={editAmountInput} onChange={(e) => setEditAmountInput(e.target.value)} />
+                  </div>
+                  <div className="popupActions">
+                    <button onClick={applyEdit} className="addBtn">Save</button>
+                    <button onClick={() => setEditingVaccine(null)} className="cancelBtn">Cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* --- LOGS TAB --- */}
         {activeTab === "logs" && (
           <div className="tabContent">
             <h3>Activity Logs</h3>
@@ -390,12 +330,12 @@ export default function Inventory() {
                     </tr>
                   </thead>
                   <tbody>
-                    {logs.map((log) => (
-                      <tr key={log.id}>
+                    {logs.map((log, idx) => (
+                      <tr key={idx}>
                         <td>{log.timestamp}</td>
                         <td>{log.action}</td>
-                        <td>{log.vaccine}</td>
-                        <td>{log.amount}</td>
+                        <td>{VACCINES.find((x) => x.id === log.vaccine)?.name || log.vaccine}</td>
+                        <td>{Number(log.amount).toFixed(1)}</td>
                         <td>{log.user}</td>
                       </tr>
                     ))}
@@ -409,5 +349,5 @@ export default function Inventory() {
         )}
       </div>
     </div>
-  )
+  );
 }

@@ -1,18 +1,31 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./home.css";
+import { invoke } from "@tauri-apps/api/core";
 
 const Home = () => {
-    const [serving, setServing] = useState(0);
-  const [next, setNext] = useState(1);
+  const [serving, setServing] = useState(1);
+  const [next, setNext] = useState(2);
 
-  const handleNext = () => {
-    setServing(next);
-    setNext(next + 1);
+  // Load initial queue from backend
+  useEffect(() => {
+    invoke("get_queue").then(([srv, nxt]) => {
+      setServing(srv);
+      setNext(nxt);
+    });
+  }, []);
+
+  // Manual NEXT button
+  const handleNext = async () => {
+    const [srv, nxt] = await invoke("increment_queue");
+    setServing(srv);
+    setNext(nxt);
   };
 
-  const handleClear = () => {
-    setServing(0);
-    setNext(1);
+  // CLEAR button
+  const handleClear = async () => {
+    const [srv, nxt] = await invoke("clear_queue");
+    setServing(srv);
+    setNext(nxt);
   };
 
   return (
@@ -41,6 +54,5 @@ const Home = () => {
     </div>
   );
 };
-
 
 export default Home;

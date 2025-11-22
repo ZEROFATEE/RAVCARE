@@ -21,6 +21,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 serde_json = "1"
 bcrypt = "0.15" 
 once_cell = "1.19.0" # For lazy static initialization of Argon2
@@ -31,5 +32,6 @@ base64 = "0.22.1"
 dotenv = "0.15.0"
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
+tauri-plugin-printer-v2 = "0.2.0"
 
 

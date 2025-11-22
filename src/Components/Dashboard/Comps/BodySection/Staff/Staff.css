@@ -1,0 +1,324 @@
+/* ===============================
+   GLOBAL LAYOUT
+=============================== */
+.staff-container {
+  display: flex;
+  gap: 25px;
+  margin-top: 25px;
+  align-items: flex-start;
+  flex-direction: column; 
+  max-width: 1200px; 
+}
+
+/* Panels now full width */
+.right-panel,
+.register-section {
+  width: 100%;
+  background: white;
+  border: 1px solid #e19297;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(101, 17, 38, 0.15);
+}
+
+
+/* Right = User List */
+/* Bottom = Create Account */
+.right-panel {
+  flex: 2;
+  background: #fff;
+  border: 1px solid #e19297;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(101, 17, 38, 0.15);
+  max-height: 650px;
+  overflow-y: auto;
+}
+
+.create-section {
+  flex: 1;
+  background: #fff;
+  border: 1px solid #e19297;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(101, 17, 38, 0.15);
+  width: 100%;
+}
+
+/* ===============================
+   TITLES
+=============================== */
+.right-panel h2,
+.create-section h2 {
+  color: #651126;
+  margin-bottom: 15px;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* ===============================
+   USER TABLE
+=============================== */
+.user-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.user-table th,
+.user-table td {
+  border: 1px solid #e19297;
+  padding: 10px;
+  font-size: 14px;
+}
+
+.user-table th {
+  background-color: #bb4d4d;
+  color: white;
+}
+
+.user-table tr:nth-child(even) {
+  background: #fafafa;
+}
+
+/* ===============================
+   TABLE BUTTONS
+=============================== */
+.user-table button {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: none;
+  border-radius: 4px;
+  margin-right: 5px;
+  cursor: pointer;
+  color: white;
+}
+
+/* Edit Button */
+.btn-edit {
+  background-color: #bb4d4d;
+}
+
+.btn-edit:disabled {
+  background-color: #bb4d4d80;
+  cursor: not-allowed;
+}
+
+/* Activate / Deactivate */
+.btn-deactivate {
+  background-color: #bb4d4d;
+}
+
+.btn-activate {
+  background-color: #1b7039;
+}
+
+/* Delete */
+.btn-delete {
+  background-color: #8b1e1e;
+}
+
+.btn-delete:disabled {
+  background-color: #b88d8d;
+  cursor: not-allowed;
+}
+
+.user-table button:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+/* ===============================
+   CREATE ACCOUNT FORM
+=============================== */
+.create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+/* Form rows (horizontal) */
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+.field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.field.full {
+  width: 100%;
+}
+
+/* Input styles */
+input,
+select {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #e19297;
+  outline: none;
+}
+
+input:focus,
+select:focus {
+  border-color: #bb4d4d;
+}
+
+/* Password wrapper */
+.inputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.inputWrapper input {
+  width: 100%;
+  padding-left: 30px;  /* ← make room for the shield */
+  padding-right: 30px; /* ← make room for the eye */
+  box-sizing: border-box;
+}
+
+.inputWrapper .icon {
+  position: absolute;
+  left: 10px;
+  color: #666;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.toggleEye {
+  position: absolute;
+  right: 10px;
+  cursor: pointer;
+  color: #666;
+  z-index: 2;
+}
+
+/* ===============================
+   PASSWORD STRENGTH
+=============================== */
+.password-strength {
+  margin-top: 5px;
+}
+
+.strength-bar {
+  height: 6px;
+  background: #eee;
+  border-radius: 10px;
+}
+
+.strength-fill {
+  height: 100%;
+  background: #bb4d4d;
+  border-radius: 10px;
+}
+
+/* ===============================
+   REGISTER BUTTON
+=============================== */
+.create-btn {
+  background: #bb4d4d;
+  color: white;
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  font-size: 15px;
+}
+
+.create-btn:hover {
+  opacity: 0.9;
+}
+
+/* ===============================
+   GENERATED USERNAME DISPLAY
+=============================== */
+.username-display {
+  background: #fff7f8;
+  padding: 10px;
+  border: 1px solid #e19297;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.username-highlight {
+  font-weight: bold;
+  color: #651126;
+  padding-top: 5px;
+}
+
+/* ===============================
+   EDIT POPUP
+=============================== */
+.edit-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99;
+}
+
+.edit-popup {
+  background: white;
+  padding: 25px;
+  border-radius: 10px;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+}
+
+.edit-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.edit-buttons button {
+  background: #bb4d4d;
+  padding: 7px 14px;
+  border: none;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.edit-buttons button:hover {
+  opacity: 0.85;
+}
+
+/* ===============================
+   RESPONSIVE
+=============================== */
+@media (max-width: 950px) {
+  .staff-container {
+    flex-direction: column;
+  }
+
+  .right-panel,
+  .create-section {
+      background: #fff;
+  border: 1px solid #e19297;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(101, 17, 38, 0.15);
+    width: 200%;
+  }
+
+  .row {
+    flex-direction: column;
+
+    .right-panel {
+  max-height: 650px;
+  overflow-y: auto;
+}
+  }
+}

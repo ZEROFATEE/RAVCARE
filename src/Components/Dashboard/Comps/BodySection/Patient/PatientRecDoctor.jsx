@@ -1187,16 +1187,7 @@ const getRegularStatusDisplay = (appt) => {
             <option value="alphabetical">Last Name Ascending</option>
             <option value="dataDsc">Last Name Descending</option>
           </select>
-          <button className="createBtn" onClick={handleOpenCreateForm}>
-            Create
-          </button>
-         <button
-  
-  className="archiveToggleBtn"
-  onClick={() => setViewArchived((prev) => !prev)}
->
-  {viewArchived ? "View Active Patients" : "View Archived Patients"}
-</button>
+
 
         </div>
 
@@ -1404,37 +1395,6 @@ const getRegularStatusDisplay = (appt) => {
               <p><b>Address:</b> {showView.address}</p>
            <div className="modal-buttons"> <button className="Closebtn" onClick={() => setShowView(null)}>X</button>
            </div>
-          <div className="archivebtn2">
-  {!viewArchived ? (
-    <button
-      className="Archive"
-      onClick={async () => {
-        if (window.confirm(`Archive ${showView.first_name} ${showView.last_name}?`)) {
-          await archivePatient(showView.id);
-          alert("Patient archived successfully!");
-          setShowView(null);
-          loadPatients(); // refresh active list
-        }
-      }}
-    >
-      Archive
-    </button>
-  ) : (
-    <button
-      className="Restore"
-      onClick={async () => {
-        if (window.confirm(`Restore ${showView.first_name} ${showView.last_name}?`)) {
-          await restorePatient(showView.id);
-          alert("Patient restored successfully!");
-          setShowView(null);
-          loadArchivedPatients(); // refresh archive list
-        }
-      }}
-    >
-      Restore
-    </button>
-  )}
-</div>
               </div>
               <h4 className="section-title"></h4>
              <div className="title2">

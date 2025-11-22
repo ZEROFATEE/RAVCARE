@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Scanner } from "@yudiel/react-qr-scanner";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom"; 
-import { QrReader } from "react-qr-reader";
+
 
 const QRCodeScanner = () => {
   const [scannedData, setScannedData] = useState(null);

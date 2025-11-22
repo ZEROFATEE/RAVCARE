@@ -13,7 +13,10 @@
   box-shadow: 0 7px 50px #dfcdcd;
   padding: 2rem;
   text-align: center;
+    max-width: 1400px;   /* Stretch wider */
+  min-height: 85vh;    /* Covers almost full screen height */
 }
+
 
 h2 {
   color: #651126;
@@ -204,7 +207,7 @@ h2 {
 .stockAmount {
   font-size: 24px;
   font-weight: bold;
-  color: #651126 
+  color: #651126;
   margin: 0;
 }
 
@@ -303,4 +306,41 @@ h2 {
   outline: none;
   border-color: #4caf50;
   box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
+}
+/* Stretch container to full width */
+.stockTableWrapper {
+  width: 100%;
+  max-width: 100%;
+  height: 80vh; /* makes it tall */
+  overflow-y: auto; /* scrolling */
+  margin-top: 20px;
+}
+
+/* Make table fill full width */
+.stockTable {
+  width: 100%;
+  min-width: 100%;
+  border-collapse: collapse;
+}
+
+/* Table cells */
+.stockTable th,
+.stockTable td {
+  border: 1px solid #e19297;
+  padding: 12px;
+  font-size: 16px;
+}
+
+.stockTable th {
+  background: #bb4d4d;
+  color: white;
+  text-align: left;
+}
+
+.stockTable tr:nth-child(even) {
+  background: #f8f8f8;
+}
+
+.stockTable td {
+  font-weight: 500;
 }
