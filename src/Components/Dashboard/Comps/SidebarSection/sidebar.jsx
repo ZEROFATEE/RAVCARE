@@ -19,12 +19,11 @@ const Sidebar = () => {
   // ✅ Define which roles can see which links
  const menuItems = [
   { name: "Home", path: "/dashboard/home", icon: <FaHome />, roles: ["admin", "desk"] },
-  { name: "Patient Records", path: "/dashboard/patient", icon: <FaClipboardList />, roles: ["admin"] },
-  { name: "Patient Records", path: "/dashboard/patientrecdesk", icon: <FaClipboardList />, roles: ["desk"] },
-  { name: "Patient Records", path: "/dashboard/patientrecdoctor", icon: <FaClipboardList />, roles: ["doctor"] },
+  { name: "Patient Records", path: "/dashboard/patient", icon: <FaClipboardList />, roles: ["admin", "desk","doctor"] },
+
   { name: "Schedule", path: "/dashboard/schedule", icon: <FaCalendarAlt />, roles: ["admin", "doctor", "desk"] },
   { name: "Scanner", path: "/dashboard/scanner", icon: <AiOutlineScan />, roles: ["admin", "doctor", "desk"] },
-  { name: "Inventory", path: "/dashboard/inventory", icon: <MdInventory />, roles: ["admin"] },
+  { name: "Inventory", path: "/dashboard/inventory", icon: <MdInventory />, roles: ["desk"] },
   { name: "Staff", path: "/dashboard/staff", icon: <MdInventory />, roles: ["admin"] },
 ];
 

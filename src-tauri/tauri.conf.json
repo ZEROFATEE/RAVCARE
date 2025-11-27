@@ -12,9 +12,24 @@
   "app": {
     "windows": [
       {
-        "title": "ravcare",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "RavCare",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false
+      },
+      {
+        "label": "queue",
+        "title": "Queue Display",
+        "width": 400,
+        "height": 300,
+        "resizable": true,
+        "fullscreen": false,
+        "alwaysOnTop": true,
+        "decorations": true,
+        "visible": false,
+        "url": "/queue"
       }
     ],
     "security": {

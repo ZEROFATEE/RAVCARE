@@ -20,7 +20,7 @@ export const inventoryManager = {
         action: `Dose Administered (${route})`,
         vaccine: vaccineId,
         amount: -amount,
-        user: "Rabvaxx Staff",
+        user: "Doctor",
       });
 
       if (this._state?.refresh) await this._state.refresh();
@@ -51,7 +51,7 @@ export const inventoryManager = {
         action: "Regular Dose Used",
         vaccine: vaccineId,
         amount: -1,
-        user: "Rabvaxx Staff",
+        user: "Doctor",
       });
 
       if (this._state?.refresh) await this._state.refresh();
@@ -78,7 +78,7 @@ export const inventoryManager = {
         action: "Regular Dose Restored",
         vaccine: vaccineId,
         amount: 1,
-        user: "Rabvaxx Staff",
+        user: "Doctor",
       });
 
       if (this._state?.refresh) await this._state.refresh();
@@ -104,10 +104,10 @@ export const inventoryManager = {
       await invoke("change_inventory_amount", { id: vaccineId, delta: amount });
 
       await invoke("add_inventory_log", {
-        action: "Stock Added",
+        action: "Stock Dose Restored",
         vaccine: vaccineId,
         amount,
-        user: "Admin",
+        user: "Doctor",
       });
 
       if (this._state?.refresh) await this._state.refresh();
@@ -138,7 +138,7 @@ export const inventoryManager = {
         action: "Stock Adjusted",
         vaccine: vaccineId,
         amount: delta,
-        user: "Admin",
+        user: "Rabvaxx Staff",
       });
 
       if (this._state?.refresh) await this._state.refresh();

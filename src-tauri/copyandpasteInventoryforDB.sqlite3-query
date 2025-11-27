@@ -1,0 +1,14 @@
+-- database: c:\coding\.GitUploads\RAVCARE\src-tauri\data\ravcare.db
+
+SELECT * FROM inventory
+ORDER BY `id` ASC;
+
+INSERT OR REPLACE INTO inventory (id, name, amount, last_edited) VALUES
+('vaxirab',  'Vaxirab N',       0, DATE('now')),
+('pcv13',    'PCV13',           0, DATE('now')),
+('ppsv23',   'PPSV23',          0, DATE('now')),
+('tetanus',  'Tetanus Toxoid',  0, DATE('now')),
+('ats',      'ATS',             0, DATE('now')),
+('htig',     'HTIG',            0, DATE('now')),
+('hepab',    'Hepa B Vaccine',  0, DATE('now')),
+('flu',      'Flu Vaccine',     0, DATE('now'));

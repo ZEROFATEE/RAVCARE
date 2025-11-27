@@ -3,9 +3,42 @@ use rusqlite::{Connection, params, Result};
 use std::fs;
 use bcrypt::{hash, DEFAULT_COST};
 use crate::DB_PATH;
+use dotenv::dotenv;
+use std::env;
 
 
+#[derive(Serialize)]
+pub struct MUserPayload {
+    pub patient_id: i64,
+    pub username: String,
+    pub password_hash: String,
+    pub encrypted_password: String,
+}
 
+
+pub async fn send_muser_to_supabase(muser: MUserPayload) -> Result<(), String> {
+    dotenv().ok();
+let supabase_url = env::var("SUPABASE_URL").map_err(|e| e.to_string())?;
+let supabase_key = env::var("SUPABASE_KEY").map_err(|e| e.to_string())?;
+
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post(&format!("{}/rest/v1/musers", supabase_url)) // table name
+        .header("apikey", &supabase_key)
+        .header("Authorization", format!("Bearer {}", supabase_key))
+        .header("Content-Type", "application/json")
+        .json(&muser)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if res.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("Failed to send muser: {:?}", res.text().await.unwrap_or_default()))
+    }
+}
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -37,7 +70,7 @@ pub struct Patient {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InventoryItem {
-    pub id: Option<i32>,
+    pub id: i32,
     pub name: String,
     pub amount: i32,
     pub last_edited: Option<String>,
@@ -85,7 +118,6 @@ pub fn create_user(
 }
 
 // 2️⃣ Fetch all users
-// 2️⃣ Fetch all users
 #[tauri::command]
 pub fn get_all_users_db() -> Result<Vec<User>, String> {
     let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
@@ -115,7 +147,6 @@ pub fn get_all_users_db() -> Result<Vec<User>, String> {
 
     Ok(users)
 }
-
 
 // 3️⃣ Delete a user by ID
 #[tauri::command]
@@ -525,7 +556,7 @@ pub fn get_all_inventory() -> Result<Vec<InventoryItem>> {
     let items = stmt
         .query_map([], |row| {
             Ok(InventoryItem {
-                id: row.get(0).ok(),
+                id: row.get(0)?,
                 name: row.get(1)?,
                 amount: row.get(2)?,
                 last_edited: row.get(3)?,

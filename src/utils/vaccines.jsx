@@ -47,7 +47,7 @@ export const VACCINE_MAP = {
   flu: {
     name: "Flu Vaccine",
     category: "Influenza",
-    routes: ["IM"], // but patient.jsx free input stays allowed
+    routes: ["IM"], 
   },
 };
 

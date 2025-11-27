@@ -5,6 +5,7 @@ import Calendar from "react-calendar"
 import "react-calendar/dist/Calendar.css"
 import { invoke } from "@tauri-apps/api/core"
 import { useNavigate, useLocation } from "react-router-dom"
+import { useToast } from "../../../../../utils/Toast";
 
 // Fetch appointments for a patient
 async function getAppointments(patientId) {
@@ -20,8 +21,11 @@ const dateObjToDateStr = (d = new Date()) => {
 }
 
 const Schedule = () => {
+  const toast = useToast();
   const navigate = useNavigate()
   const location = useLocation()
+  const params = new URLSearchParams(location.search);
+  const openAppointmentId = new URLSearchParams(location.search).get("open");
   const { selectedPatient: fromPatient, refresh } = location.state || {}
 
   const [time, setTime] = useState(new Date().toLocaleTimeString())
@@ -67,7 +71,7 @@ const [apptToResched, setApptToResched] = useState(null);
 
 const handleReschedule = (appointment) => {
   if (!appointment) {
-    alert("No appointment selected to reschedule!");
+    toast.show("No appointment selected to reschedule!","warning");
     return;
   }
   setApptToResched(appointment);
@@ -77,7 +81,7 @@ const handleReschedule = (appointment) => {
 
 const confirmReschedule = async () => {
   if (!apptToResched || !newDate) {
-    alert("Please select a new date!");
+    toast.show("Please select a new date!","warning");
     return;
   }
 
@@ -97,7 +101,7 @@ const confirmReschedule = async () => {
 
     const newDateObj = parseYMD(newDate);
     if (!newDateObj) {
-      alert("Invalid new date.");
+      toast.show("Invalid new date.","error");
       return;
     }
 
@@ -109,8 +113,9 @@ const dayFields =
   pxType === "booster"
     ? [
         ["day_zero_date", "day_zero_status"],
+        ["day_three_date", "day_three_status"],
         ["day_seven_date", "day_seven_status"],
-        ["day_thirty_date", "day_thirty_status"],
+        
       ]
     : [
         ["day_zero_date", "day_zero_status"],
@@ -181,7 +186,7 @@ for (let j = missedIndex; j < dayFields.length; j++) {
 }
 
 if (firstNonDoneIndex === null) {
-  alert("All later doses are already done — nothing to reschedule.");
+  toast.show("All later doses are already done — nothing to reschedule.","info");
   return;
 }
 
@@ -264,14 +269,14 @@ for (let j = missedIdx; j < hepaFields.length; j++) {
 }
 
 if (firstNonDoneIdx === null) {
-  alert("All later Hepa B doses are already done — nothing to reschedule.");
+  toast.show("All later Hepa B doses are already done — nothing to reschedule.","info");
   return;
 }
 
 // ✅ Anchor: Dose 1 date
 const dose1Date = parseYMD(dateStrNorm(updatedAppt.hepa_b_dose1));
 if (!dose1Date) {
-  alert("Dose 1 date is missing — cannot reschedule.");
+  toast.show("Dose 1 date is missing — cannot reschedule.","error");
   return;
 }
 
@@ -295,7 +300,7 @@ for (let j = firstNonDoneIdx; j < hepaFields.length; j++) {
 
     // If nothing matched
     if (!rescheduledSomething) {
-      alert("Only missed appointments can be rescheduled!");
+      toast.show("Only missed appointments can be rescheduled!","warning");
       return;
     }
 
@@ -309,10 +314,10 @@ for (let j = firstNonDoneIdx; j < hepaFields.length; j++) {
     window.dispatchEvent(new Event("refreshSchedule"));
     await loadAppointmentsForSelectedDate();
 
-    alert("✅ Appointment rescheduled successfully!");
+    toast.show("✅ Appointment rescheduled successfully!","success");
   } catch (err) {
     console.error("Failed to reschedule:", err);
-    alert("❌ Failed to reschedule: " + err);
+    toast.show("❌ Failed to reschedule: " + err,"error");
   }
 };
 
@@ -326,8 +331,9 @@ const dayOrder =
   type === "booster"
     ? [
         ["day_zero_date", "day_zero_status"],
+        ["day_three_date", "day_three_status"],
         ["day_seven_date", "day_seven_status"],
-        ["day_thirty_date", "day_thirty_status"],
+       
       ]
     : [
         ["day_zero_date", "day_zero_status"],
@@ -369,7 +375,7 @@ const getApptScheduledDateStrings = (appt) => {
   const type = (appt.prophylaxis_type || "").toLowerCase();
 
   // 🟥 POST-EXPOSURE PROPHYLAXIS (5-dose ARV)
-  if (type === "post exposure prophylaxis") {
+  if (type === "post exposure prophylaxis"||"pre exposure prophylaxis") {
     const pepPairs = [
       ["day_zero_date", "day_zero_status"],
       ["day_three_date", "day_three_status"],
@@ -389,8 +395,9 @@ const getApptScheduledDateStrings = (appt) => {
   if (type === "booster") {
     const boosterPairs = [
       ["day_zero_date", "day_zero_status"],
+      ["day_three_date", "day_three_status"],
       ["day_seven_date", "day_seven_status"],
-      ["day_thirty_date", "day_thirty_status"],
+      
     ];
 
     for (const [df, sf] of boosterPairs) {
@@ -401,10 +408,13 @@ const getApptScheduledDateStrings = (appt) => {
   }
 
   // 🟧 REGULAR VACCINES (single dose)
-  if (appt.regular_type && appt.regular_type !== "Hepa B Vaccine") {
-    const ds = normalizeToDateStr(appt.regular_date);
+ if (appt.regular_type && appt.regular_type !== "Hepa B Vaccine") {
+  const doseFields = ["regular_date", "regular_date2", "regular_date3"];
+  for (const f of doseFields) {
+    const ds = normalizeToDateStr(appt[f]);
     if (ds) arr.push(ds);
   }
+}
 
   // 🟨 HEPATITIS B (3-dose)
   const hepaPairs = [
@@ -461,7 +471,7 @@ const getStatusFieldForDate = (appt, selectedDate) => {
     normalizeToDateStr(appt[field]) === normalizedSelected;
 
   // 🟥 1. POST-EXPOSURE PROPHYLAXIS (5-dose)
-  if (type === "post exposure prophylaxis") {
+  if (type === "post exposure prophylaxis"||"pre exposure prophylaxis") {
     const pepMap = {
       day_zero_date: "day_zero_status",
       day_three_date: "day_three_status",
@@ -622,8 +632,9 @@ const arvPairs =
   type === "booster"
     ? [
         ["day_zero_date", "day_zero_status"],
+        ["day_three_date", "day_three_status"],
         ["day_seven_date", "day_seven_status"],
-        ["day_thirty_date", "day_thirty_status"],
+        
       ]
     : [
         ["day_zero_date", "day_zero_status"],
@@ -695,11 +706,13 @@ useEffect(() => {
       const patientsWithAppointments = await Promise.all(
         data.map(async (p) => {
           const appts = await getAppointments(p.id);
+
           // 🟩 Normalize statuses before storing
           const normalized = (appts || []).map((a) => ({
             ...a,
             status: (a.status || a.schedule_status || "🟡 Pending").trim(),
           }));
+
           return { ...p, appointments: normalized };
         })
       );
@@ -710,14 +723,18 @@ useEffect(() => {
       // 🟦 Recalculate global arrays
       const allA = patientsWithAppointments.flatMap((p) => p.appointments || []);
       const normalizeStatus = (s) => (s || "").toLowerCase();
-      
+
+      const missedForDate = allA.filter(
+        (a) => normalizeStatus(a.status) === "missed"
+      );
+
       setMissedCount(missedForDate.length);
       setFinished(allA.filter((a) => normalizeStatus(a.status) === "finished"));
-      setMissed(allA.filter((a) => normalizeStatus(a.status) === "missed"));
+      setMissed(missedForDate);
+
       setAppointments(
         allA.filter(
-          (a) =>
-            !["finished", "missed"].includes(normalizeStatus(a.status))
+          (a) => !["finished", "missed"].includes(normalizeStatus(a.status))
         )
       );
     } catch (err) {
@@ -727,6 +744,54 @@ useEffect(() => {
 
   loadPatients();
 }, [refresh]);
+
+
+
+// 🔥 Auto-open appointment AFTER all filtering & normalization is done
+useEffect(() => {
+  if (!openAppointmentId || patients.length === 0) return;
+
+  setTimeout(() => {
+    const patient = patients.find(p =>
+      p.appointments?.some(a => String(a.id) === String(openAppointmentId))
+    );
+    if (!patient) return;
+
+    const appt = patient.appointments.find(a =>
+      String(a.id) === String(openAppointmentId)
+    );
+    if (!appt) return;
+
+    setSelectedPatient(patient);
+    setSelectedAppointment(appt);
+    setShowEditPopup(true);
+
+    // remove from URL so it doesn’t re-open
+    navigate("/dashboard/schedule", { replace: true });
+  }, 0);
+}, [openAppointmentId, patients]);
+
+// 🟦 Keep popup open even after patients refresh
+useEffect(() => {
+  if (!showEditPopup || !selectedAppointment) return;
+
+  // Try to find updated patient + appointment in refreshed list
+  const patient = patients.find(p =>
+    p.appointments?.some(a => a.id === selectedAppointment.id)
+  );
+
+  if (!patient) return;
+
+  const appt = patient.appointments.find(a => a.id === selectedAppointment.id);
+  if (!appt) return;
+
+  // Update to latest data
+  setSelectedPatient(patient);
+  setSelectedAppointment(appt);
+}, [patients]);
+
+
+
 
  // 🕒 Auto-miss checker (safe, instant + scheduled)
 // 🕒 Auto-miss checker (safe, instant + midnight)
@@ -754,8 +819,9 @@ const dayFields =
   pxType === "booster"
     ? [
         ["day_zero_date", "day_zero_status"],
+        ["day_three_date", "day_three_status"],
         ["day_seven_date", "day_seven_status"],
-        ["day_thirty_date", "day_thirty_status"],
+        
       ]
     : [
         ["day_zero_date", "day_zero_status"],
@@ -767,15 +833,12 @@ const dayFields =
 
               let anyDayMissed = false;
 
-              // ------------------------------
-              // ANTI-RABIES AUTO-MISS
-              // ------------------------------
-              // ------------------------------
+
 // ANTI-RABIES AUTO-MISS
 // ------------------------------
 if (
   appt.prophylaxis_type &&
-  ["post exposure prophylaxis", "booster"].includes(
+  ["post exposure prophylaxis","pre exposure prophylaxis", "booster"].includes(
     appt.prophylaxis_type.toLowerCase()
   )
 ) {
@@ -868,8 +931,9 @@ for (const [doseDateField, doseStatusField] of hepaDates) {
 
 const boosterFields = [
   ["day_zero_date", "day_zero_status"],
+  ["day_three_date", "day_three_status"],
   ["day_seven_date", "day_seven_status"],
-  ["day_thirty_date", "day_thirty_status"],
+  
 ];
 
 const pepFields = [
@@ -1101,8 +1165,9 @@ const arvPairs =
   type === "booster"
     ? [
         ["day_zero_date", "day_zero_status"],
+        ["day_three_date", "day_three_status"],
         ["day_seven_date", "day_seven_status"],
-        ["day_thirty_date", "day_thirty_status"],
+        
       ]
     : [
         ["day_zero_date", "day_zero_status"],
@@ -1180,8 +1245,9 @@ const arvList =
   type === "booster"
     ? [
         ["day_zero_date", "day_zero_status"],
+        ["day_three_date", "day_three_status"],
         ["day_seven_date", "day_seven_status"],
-        ["day_thirty_date", "day_thirty_status"],
+        
       ]
     : [
         ["day_zero_date", "day_zero_status"],
@@ -1244,8 +1310,9 @@ const arvPairs =
   type === "booster"
     ? [
         ["day_zero_date", "day_zero_status"],
+        ["day_three_date", "day_three_status"],
         ["day_seven_date", "day_seven_status"],
-        ["day_thirty_date", "day_thirty_status"],
+        
       ]
     : [
         ["day_zero_date", "day_zero_status"],
@@ -1324,7 +1391,7 @@ if (arvMissed) return true;
     setMissed(allA.filter((a) => (a.status || "").toLowerCase() === "missed"));
   } catch (error) {
     console.error("Failed to update status:", error);
-    alert("Failed to update appointment status: " + error);
+    toast.show("Failed to update appointment status: " + error,"error");
   }
 };
 
@@ -1340,7 +1407,8 @@ const openEditForPatient = async (patient, appointment) => {
   setShowEditPopup(true);
 };
 
-  
+ 
+
 
   return (
     <div className="schedule-layout">
@@ -1395,8 +1463,8 @@ const dayMap =
   type === "booster"
     ? {
         day_zero_date: "day_zero_status",
+        day_three_date: "day_three_status",
         day_seven_date: "day_seven_status",
-        day_thirty_date: "day_thirty_status",
       }
     : {
         day_zero_date: "day_zero_status",
@@ -1432,6 +1500,7 @@ if (a.regular_type === "Hepa B Vaccine") {
   if (normalizeToDateStr(a.hepa_b_dose3) === selectedDate)
     currentDayStatus = a.hepa_b_status3 || "🟡 Pending";
 }
+
 
         return (
           <div className="appointment-card" key={`${p.id}-${a.id}`}>
@@ -1541,7 +1610,7 @@ if (a.regular_type === "Hepa B Vaccine") {
        <div className="right-lower-row">
   {missedNotice && missedCount > 0 && (
     <div className="missed-alert">
-      <h3>⚠️ Missed Appointments Today</h3>
+      <h3>⚠️ Missed Today</h3>
       <p>
         ⚠️ {missedCount} missed appointment
         {missedCount > 1 ? "s" : ""} today
@@ -1587,7 +1656,7 @@ if (a.regular_type === "Hepa B Vaccine") {
             <div className="Closebtn"><button onClick={() => setShowEditPopup(false)}>Close</button></div>
             <h3>Name: {selectedPatient ? `${selectedPatient.last_name}, ${selectedPatient.first_name} ${selectedPatient.middle_name || ""}` : "No patient selected"}</h3>
             <div className="Edit-Buttons">
-              <h3>Appointment Details</h3>
+              <h3>Schedule Details</h3>
               {selectedAppointment ? (
                 <div className="appointment-details">
                   <p><b>Purpose:</b> {selectedAppointment.prophylaxis_type || selectedAppointment.regular_type||"Not specified"}</p>
@@ -1602,7 +1671,7 @@ if (a.regular_type === "Hepa B Vaccine") {
   let schedule = [];
 
   // FULL PEP (5-dose)
-  if (type === "post exposure prophylaxis") {
+  if (type === "post exposure prophylaxis"||"pre exposure prophylaxis") {
     schedule = [
       ["D0", selectedAppointment.day_zero_date, selectedAppointment.day_zero_status],
       ["D3", selectedAppointment.day_three_date, selectedAppointment.day_three_status],
@@ -1616,8 +1685,9 @@ if (a.regular_type === "Hepa B Vaccine") {
   if (type === "booster") {
     schedule = [
       ["D0", selectedAppointment.day_zero_date, selectedAppointment.day_zero_status],
+      ["D3", selectedAppointment.day_three_date, selectedAppointment.day_three_status],
       ["D7", selectedAppointment.day_seven_date, selectedAppointment.day_seven_status],
-      ["D30", selectedAppointment.day_thirty_date, selectedAppointment.day_thirty_status],
+     
     ];
   }
 

@@ -10,19 +10,60 @@ use base64::{engine::general_purpose, Engine as _};
 use dotenv::dotenv;
 use std::env;
 use axum::{Router, routing::{get, post}, Json, extract::Path};
-use serde_json::json;
 use tauri_plugin_printer_v2::init as printer_init;
+
+use serde_json::json;
+use reqwest::Client;
+mod database; 
+
+
 
 pub const DB_PATH: &str = r".\data\ravcare.db";
 
+use crate::database::{
+    delete_user, toggle_user_status, reactivate_user, get_unverified_users_db,
+    approve_user, deny_user, update_user_db,  }; //added code here 
 
-mod database;
 use database::{init_db, init_musers_table, get_all_patients, get_archived_patients, Patient};
+
 
 // ==================== APP STATE ====================
 
 struct AppState {
     db: Mutex<Connection>,
+}
+// ==================== Queue ====================
+struct QueueState {
+    serving: Mutex<u32>,
+    next: Mutex<u32>,
+}
+#[tauri::command]
+fn get_queue(state: State<'_, QueueState>) -> (u32, u32) {
+    let serving = state.serving.lock().unwrap();
+    let next = state.next.lock().unwrap();
+    (*serving, *next)
+}
+
+#[tauri::command]
+fn increment_queue(state: State<'_, QueueState>) -> (u32, u32) {
+    let mut serving = state.serving.lock().unwrap();
+    let mut next = state.next.lock().unwrap();
+
+    *serving = *next;
+    *next += 1;
+
+    (*serving, *next)
+}
+
+#[tauri::command]
+fn clear_queue(state: State<'_, QueueState>) -> (u32, u32) {
+    let mut serving = state.serving.lock().unwrap();
+    let mut next = state.next.lock().unwrap();
+
+    *serving = 1;
+    *next = 2;
+
+    (*serving, *next)
 }
 
 // ==================== USER SYSTEM ====================
@@ -31,41 +72,68 @@ struct AppState {
 struct User {
     id: i64,
     username: String,
-    email: String,
     password_hash: String,
     is_admin: bool,
     role: String,
 }
+#[derive(Debug, serde::Deserialize)]
+struct RegisterPayload{
+    firstname: String,
+    middlename: Option<String>,
+    lastname: String,
+    contact_num: String,
+    password: String,
+    role: String,
+}
+
 
 #[tauri::command]
-fn register_user(
+async fn register_user(
     state: State<'_, AppState>,
-    username: String,
-    email: String,
-    password: String,
+    payload: RegisterPayload,
 ) -> Result<String, String> {
+    println!("🟢 register_user called with {:?}", payload);
+
     let conn = state.db.lock().unwrap();
-    let hashed_password = hash(password, DEFAULT_COST).map_err(|e| e.to_string())?;
 
-    // Assign role automatically based on username pattern
-    let role = if username.to_lowercase().contains("admin") {
-        "admin"
-    } else if username.to_lowercase().contains("doctor") {
-        "doctor"
-    } else if username.to_lowercase().contains("desk") {
-        "desk"
-    } else {
-        "staff"
-    };
+    let username = format!(
+        "{}{}{}",
+        payload.firstname.to_lowercase(),
+        payload.lastname.to_lowercase(),
+        payload.role.to_lowercase()
+    );
 
-    conn.execute(
-        "INSERT INTO users (username, email, password_hash, is_admin, role)
-         VALUES (?1, ?2, ?3, 0, ?4)",
-        params![username, email, hashed_password, role],
-    )
-    .map_err(|e| e.to_string())?;
+    let hash = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST)
+        .map_err(|e| e.to_string())?;
 
-    Ok(format!("User registered successfully as {}!", role))
+    let role = payload.role.to_lowercase();
+    let is_admin = if role == "admin" { 1 } else { 0 };
+    let is_active = 1;
+
+    println!("🟣 Inserting user: {}", username);
+
+    if let Err(e) = conn.execute(
+        "INSERT INTO users
+           (firstname, middlename, lastname, contactnum, password_hash, role, is_active, is_admin, username)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![
+            payload.firstname,
+            payload.middlename,
+            payload.lastname,
+            payload.contact_num,
+            hash,
+            role,
+            is_active,
+            is_admin,
+            username,
+        ],
+    ) {
+        eprintln!("❌ DB insert failed: {}", e);
+        return Err(format!("Database error: {}", e));
+    }
+
+    println!("✅ User '{}' registered successfully.", username);
+    Ok(username)
 }
 
 #[tauri::command]
@@ -78,19 +146,24 @@ fn login_user(
 
     let conn = state.db.lock().unwrap();
 
-    // Select id, password_hash, and role
+    // Select id, password_hash, role, and is_active
     let mut stmt = conn
-        .prepare("SELECT id, password_hash, role FROM users WHERE username = ?1")
+        .prepare("SELECT id, password_hash, role, is_active FROM users WHERE username = ?1")
         .map_err(|e| e.to_string())?;
 
-    let user_row: Option<(i64, String, String)> = stmt
+    let user_row: Option<(i64, String, String, i32)> = stmt
         .query_row([&username], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
         })
         .optional()
         .map_err(|e| e.to_string())?;
 
-    if let Some((id, stored_hash, role)) = user_row {
+    if let Some((id, stored_hash, role, is_active)) = user_row {
+        // Check if account is active
+        if is_active == 0 {
+            return Err("Account is deactivated. Please contact an admin.".into());
+        }
+
         // Verify password hash
         if verify(&password, &stored_hash).unwrap_or(false) {
             Ok(serde_json::json!({
@@ -113,20 +186,21 @@ fn login_user(
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct InventoryItem {
-    id: i64,
-    name: String,
-    amount: i64,
+    id: String,       // vaxirab, pcv13, etc.
+    name: String,     // Vaxirab N
+    amount: f64,      // allows decimals for ID doses
     last_edited: String,
 }
 
 #[tauri::command]
 fn get_inventory(state: State<'_, AppState>) -> Result<Vec<InventoryItem>, String> {
     let conn = state.db.lock().unwrap();
+
     let mut stmt = conn
-        .prepare("SELECT id, name, amount, last_edited FROM inventory")
+        .prepare("SELECT id, name, amount, last_edited FROM inventory ORDER BY id")
         .map_err(|e| e.to_string())?;
 
-    let items = stmt
+    let rows = stmt
         .query_map([], |row| {
             Ok(InventoryItem {
                 id: row.get(0)?,
@@ -135,49 +209,151 @@ fn get_inventory(state: State<'_, AppState>) -> Result<Vec<InventoryItem>, Strin
                 last_edited: row.get(3)?,
             })
         })
-        .map_err(|e| e.to_string())?
-        .filter_map(Result::ok)
-        .collect();
+        .map_err(|e| e.to_string())?;
+
+    let mut items = Vec::new();
+    for r in rows {
+        items.push(r.map_err(|e| e.to_string())?);
+    }
 
     Ok(items)
 }
 
 #[tauri::command]
-fn create_item(state: State<'_, AppState>, name: String, amount: i64) -> Result<String, String> {
+fn create_item(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    amount: f64
+) -> Result<String, String> {
     let conn = state.db.lock().unwrap();
-    let now = Utc::now().date_naive().to_string();
 
     conn.execute(
-        "INSERT INTO inventory (name, amount, last_edited) VALUES (?1, ?2, ?3)",
-        params![name, amount, now],
+        "INSERT INTO inventory (id, name, amount, last_edited)
+         VALUES (?1, ?2, ?3, datetime('now'))",
+        params![id, name, amount],
     )
     .map_err(|e| e.to_string())?;
 
-    Ok("Item created successfully".into())
+    Ok("Item created".into())
 }
 
 #[tauri::command]
-fn edit_item(state: State<'_, AppState>, id: i64, name: String, amount: i64) -> Result<String, String> {
-    let conn = state.db.lock().unwrap();
-    let now = Utc::now().date_naive().to_string();
+fn change_inventory_amount(
+    state: State<'_, AppState>,
+    id: String,
+    delta: f64
+) -> Result<InventoryItem, String> {
 
-    conn.execute(
-        "UPDATE inventory SET name = ?1, amount = ?2, last_edited = ?3 WHERE id = ?4",
-        params![name, amount, now, id],
+    let mut conn = state.db.lock().unwrap();   // MUST BE MUT
+
+    // atomic transaction
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "UPDATE inventory
+         SET amount = amount + ?, last_edited = datetime('now')
+         WHERE id = ?",
+        params![delta, id],
     )
     .map_err(|e| e.to_string())?;
 
-    Ok("Item updated successfully".into())
-}
+    tx.commit().map_err(|e| e.to_string())?;
 
-#[tauri::command]
-fn delete_item(state: State<'_, AppState>, id: i64) -> Result<String, String> {
-    let conn = state.db.lock().unwrap();
-    conn.execute("DELETE FROM inventory WHERE id = ?1", params![id])
+    // fetch updated row
+    let mut stmt = conn
+        .prepare("SELECT id, name, amount, last_edited FROM inventory WHERE id = ?")
         .map_err(|e| e.to_string())?;
 
-    Ok("Item deleted successfully".into())
+    let mut rows = stmt
+        .query_map(params![id], |row| {
+            Ok(InventoryItem {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                amount: row.get(2)?,
+                last_edited: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    if let Some(r) = rows.next() {
+        return r.map_err(|e| e.to_string());
+    }
+
+    Err("Updated item not found".into())
 }
+
+#[tauri::command]
+fn delete_item(state: State<'_, AppState>, id: String) -> Result<String, String> {
+    let conn = state.db.lock().unwrap();
+
+    conn.execute("DELETE FROM inventory WHERE id = ?", params![id])
+        .map_err(|e| e.to_string())?;
+
+    Ok("Item deleted".into())
+}
+
+// ==================== INVENTORY LOG ====================
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct InventoryLog {
+    id: i64,
+    timestamp: String,
+    action: String,
+    vaccine: String,
+    amount: f64,
+    user: String,
+}
+
+#[tauri::command]
+fn get_inventory_logs(state: State<'_, AppState>) -> Result<Vec<InventoryLog>, String> {
+    let conn = state.db.lock().unwrap();
+
+    let mut stmt = conn
+        .prepare("SELECT id, timestamp, action, vaccine, amount, user FROM inventory_logs ORDER BY id DESC")
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(InventoryLog {
+            id: row.get(0)?,
+            timestamp: row.get(1)?,
+            action: row.get(2)?,
+            vaccine: row.get(3)?,
+            amount: row.get(4)?,
+            user: row.get(5)?,
+        })
+    })
+    .map_err(|e| e.to_string())?;
+
+    let mut logs = Vec::new();
+    for row in rows {
+        logs.push(row.map_err(|e| e.to_string())?);
+    }
+
+    Ok(logs)
+}
+
+#[tauri::command]
+fn add_inventory_log(
+    state: State<'_, AppState>,
+    action: String,
+    vaccine: String,
+    amount: f64,
+    user: String
+) -> Result<String, String> {
+    let conn = state.db.lock().unwrap();
+
+    conn.execute(
+        "INSERT INTO inventory_logs (timestamp, action, vaccine, amount, user)
+         VALUES (datetime('now','localtime'), ?, ?, ?, ?)",
+        params![action, vaccine, amount, user],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("Log added".into())
+}
+
+
+
 
 // ==================== PATIENTS ====================
 #[tauri::command]
@@ -216,7 +392,6 @@ conn.execute(
         patient.assessment,
     ],
 )
-
     .map_err(|e| format!("Create patient failed: {}", e))?;
 
     let patient_id = conn.last_insert_rowid();
@@ -240,7 +415,6 @@ conn.execute(
     let password_hash = hash(&password_plain, bcrypt::DEFAULT_COST)
         .map_err(|e| format!("Hash failed: {}", e))?;
 
-        
     // ✅ Insert into musers
     conn.execute(
         "INSERT INTO musers (patient_id, username, password_hash, encrypted_password, created_at)
@@ -255,28 +429,123 @@ conn.execute(
     )
     .map_err(|e| format!("Create mobile user failed: {}", e))?;
 
+    
+let username_clone = username.clone();
+tokio::spawn(async move {
+    if let Err(e) = insert_user_to_supabase(&username_clone, &password_hash, patient_id).await {
+        eprintln!("❌ Failed to sync user to Supabase: {}", e);
+    } else {
+        println!("✅ User synced to Supabase: {}", username_clone);
+    }
+});
+
    Ok(serde_json::json!({
     "patient_id": patient_id,
     "username": username,
     "password": password_plain
 }))
-
-            // 4️⃣ CALL LOCAL + SUPABASE SYNC COMMAND
-    crate::create_muser_and_sync(
-        patient_id,
-        username.clone(),
-        password_hash.clone()
-    )
-    .await
-    .map_err(|e| format!("Failed to sync muser: {}", e))?;
-
-    // 5️⃣ RETURN CREATED PATIENT + LOGIN INFO FOR FRONTEND
-    Ok(serde_json::json!({
-        "patient_id": patient_id,
-        "username": username,
-        "password": raw_password
-    }))
 }
+
+pub async fn sync_all_musers_to_supabase() -> Result<String, String> {
+    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT username, password_hash, patient_id FROM musers")
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut success = 0;
+    let mut failed = 0;
+
+    for (username, password_hash, patient_id) in rows {
+        if insert_user_to_supabase(&username, &password_hash, patient_id).await.is_ok() {
+            success += 1;
+        } else {
+            failed += 1;
+        }
+    }
+
+    Ok(format!("✅ Synced {} users, ❌ failed {}", success, failed))
+}
+
+
+
+
+
+
+
+
+// added this code for supabase, shdawhaa
+async fn insert_user_to_supabase(
+    username: &str,
+    password_hash: &str,
+    patient_id: i64,
+) -> Result<(), String> {
+    let client = Client::new();
+    let supabase_url = "https://ddfzwwaldprstwgjbuvp.supabase.co";
+    let supabase_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRkZnp3d2FsZHByc3R3Z2pidXZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyMzMwNzAsImV4cCI6MjA3ODgwOTA3MH0.My0LeEJ1LS96YYNA4YlmpoSwIGEyYWjq-tyCtt2IJKI";
+
+    let body = json!({
+        "username": username,
+        "password_hash": password_hash,
+        "patient_id": patient_id
+    });
+
+    println!("📤 Sending to Supabase: {}", body);
+
+    let res = client
+        .post(format!("{}/rest/v1/muser", supabase_url))
+        .header("apikey", supabase_key)
+        .header("Authorization", format!("Bearer {}", supabase_key))
+        .header("Content-Type", "application/json")
+        .header("Prefer", "return=minimal")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Supabase request failed: {}", e))?;
+
+    println!("📥 Supabase response status: {}", res.status());
+
+    if !res.status().is_success() {
+        let text = res.text().await.unwrap_or_default();
+        eprintln!("❌ Supabase error: {}", text);
+        return Err(format!("Supabase error: {}", text));
+    }
+
+    println!("✅ Inserted into Supabase: {}", username);
+    Ok(())
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -304,7 +573,7 @@ fn get_patient_with_user(id: i64) -> Result<serde_json::Value, String> {
     let secret_key = env::var("SECRET_KEY").map_err(|e| e.to_string())?;
     let conn = Connection::open(DB_PATH).map_err(|e| format!("DB open error: {}", e))?;
 
-    println!("🔍 get_patient_with_user called for id: {}", id);
+    
 
     let mut stmt = conn.prepare(
         "SELECT 
@@ -318,21 +587,13 @@ fn get_patient_with_user(id: i64) -> Result<serde_json::Value, String> {
     WHERE p.id = ?1"
     ).map_err(|e| format!("Prepare failed: {}", e))?;
 
-    let result = stmt.query_row(params![id], |row| {
-        let encrypted_pw: Option<String> = row.get(16).ok();
-        let decrypted_pw = match &encrypted_pw {
-            Some(pw) => match decrypt_password(pw, &secret_key) {
-                Ok(p) => {
-                    println!("✅ Decrypted password: {}", p);
-                    Some(p)
-                }
-                Err(e) => {
-                    println!("❌ Decrypt failed: {}", e);
-                    None
-                }
-            },
-            None => None,
-        };
+        let result = stmt.query_row(params![id], |row| {
+    let encrypted_pw: Option<String> = row.get(15).ok();
+
+    let decrypted_pw = match &encrypted_pw {
+        Some(pw) => decrypt_password(pw, &secret_key).ok(),
+        None => None,
+    };
 
         Ok(serde_json::json!({
             "id": row.get::<_, i64>(0)?,
@@ -1011,9 +1272,69 @@ fn extract_birth_year(dob: &str) -> Option<String> {
         None
     }
 }
+
+// ---------- for staff component jdajaaj  ----------
+#[tauri::command]
+async fn get_all_users(_state: State<'_, AppState>) -> Result<Vec<database::User>, String> {
+    database::get_all_users_db().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_unverified_users(_state: State<'_, AppState>) -> Result<Vec<database::UnverifiedUser>, String> {
+    get_unverified_users_db().map_err(|e| e.to_string())
+}
+
+// ------------  request verification (unverified insert)  ------------
+#[tauri::command]
+async fn request_verification(
+    state: State<'_, AppState>,
+    payload: RegisterPayload,
+) -> Result<String, String> {
+    let conn = state.db.lock().unwrap();
+    let username = format!(
+        "{}{}{}",
+        payload.firstname.to_lowercase(),
+        payload.lastname.to_lowercase(),
+        payload.role.to_lowercase()
+    );
+    let hash = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST)
+        .map_err(|e| e.to_string())?;
+    let role = payload.role.to_lowercase();
+
+    conn.execute(
+        "INSERT INTO users (firstname, middlename, lastname, contactnum, password_hash, role, is_active, verified, username)
+         VALUES (?1,?2,?3,?4,?5,?6,0,0,?7)",
+        rusqlite::params![
+            payload.firstname,
+            payload.middlename,
+            payload.lastname,
+            payload.contact_num,
+            hash,
+            role,
+            username,
+        ],
+    )
+    .map_err(|e| format!("DB error: {}", e))?;
+
+    Ok(username)
+}
+
 // ==================== MAIN ====================
 #[tokio::main]
 async fn main() {
+
+        // 1. Kill the native dialog but keep the error in the console
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("🚨 Panic: {}", info);
+        // Optionally send to front-end or telemetry here
+    }));
+    
+    dotenv().ok(); // load .env
+    let secret_key = env::var("SECRET_KEY").expect("SECRET_KEY must be set in .env");
+    println!("Loaded key: {}", secret_key);
+
+    init_db().expect("Failed to initialize database");
+    
     dotenv().ok(); // load .env
     let secret_key = env::var("SECRET_KEY").expect("SECRET_KEY must be set in .env");
     println!("Loaded key: {}", secret_key);
@@ -1050,6 +1371,11 @@ async fn main() {
 
     tauri::Builder::default()
         .manage(app_state)
+        .manage(QueueState {
+    serving: Mutex::new(0),
+    next: Mutex::new(1),
+})
+
         .invoke_handler(tauri::generate_handler![
             register_user,
             login_user,
@@ -1058,8 +1384,10 @@ async fn main() {
             delete_patient,
             get_inventory,
             create_item,
-            edit_item,
             delete_item,
+            change_inventory_amount,
+            get_inventory_logs,
+            add_inventory_log,
             get_patient_with_user,
             get_appointments,
             create_appointment,
@@ -1070,8 +1398,18 @@ async fn main() {
             archive_patient,             
             restore_patient,             
             get_archived_patients_cmd,
-           delete_appointment,
-         
+            delete_appointment,
+            get_queue,
+            increment_queue,
+            clear_queue,
+            delete_user,
+            toggle_user_status,
+            get_all_users,
+            reactivate_user,
+            get_unverified_users,
+            approve_user,   
+            update_user_db,                 
+
         ])
         .plugin(printer_init())
         .run(tauri::generate_context!())

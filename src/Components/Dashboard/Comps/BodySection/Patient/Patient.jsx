@@ -8,6 +8,36 @@ import { PiEyeClosedLight } from "react-icons/pi";
 import { useNavigate } from "react-router-dom";
 import { useLocation } from "react-router-dom";
 import { inventoryManager } from "../../../../../utils/inventoryManager";
+import { useToast } from "../../../../../utils/Toast";
+import AppointmentPresets from "./AppointmentPresets.jsx";
+
+// notes
+// fix List sa Patient Tabs, wherein it doesn't stay on top kapag diit lang patients listed(nung names, age, at search at create button)
+// adjust design sa pagawa schedule for patients
+// add in missing design for buttons, add color and shit
+// add in mL label sa inventory
+// for the backend, we might have to change/adjust nung connection for supabase, as im not 100% sure if it works 
+// I've mainly change code for create_patient_cmd and register_user where pag connect sa supabase oocurs
+// you may have noticed, there's bunch of main.rs duplicates, I have that just in case the current code gets fcked lol
+// there is a code file named a.rs that i think was an attempt at connecting supabase for muser, i dont think it (has) work, cant remember ehe
+// also fix inventory dissapearing sa database
+// I added a query file located at backend, that has the copy and paste ready sql qeury for adding back inventory vaccines
+// other than that, I haven't much since last night.. I mainly focused on backend and mobile shit
+
+function ConfirmPopup({ message, onConfirm, onCancel }) {
+  return (
+    <div className="confirm-overlay">
+      <div className="confirm-box">
+        <p>{message}</p>
+
+        <div className="confirm-actions">
+          <button className="confirm-yes" onClick={onConfirm}>Yes</button>
+          <button className="confirm-no" onClick={onCancel}>No</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 async function reduceInventoryForDose(vaccineId, route) {
   // Anti-rabies (rabies category)
@@ -117,6 +147,9 @@ const getTodayDate = () => {
   const dd = String(today.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 };
+const todayPH = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+  .toISOString()
+  .split("T")[0];
 
 const getTodayPH = () => {
   const now = new Date();
@@ -131,20 +164,25 @@ const getTodayPH = () => {
 
   return `${yyyy}-${mm}-${dd}`;
 };
-const addMonths = (date, months) => {
-  const d = new Date(date);
+function addMonths(date, months) {
+  const d = new Date(date);  // <-- this ensures it's a Date object ALWAYS
   d.setMonth(d.getMonth() + months);
-
-  // Fix for month overflow (like Feb 31 → Apr 2)
-  if (d.getDate() !== date.getDate()) {
-    d.setDate(0);
-  }
-
   return d.toISOString().split("T")[0];
+}
+
+const lockViewTo = (id, list) => {
+  const found = list.find(a => a.id === id);
+  if (found) setViewRegularData(found);
 };
 
 
 const Patient = () => {
+
+  
+const userRole = localStorage.getItem("userRole"); 
+
+  const [confirmPopup, setConfirmPopup] = useState({ show: false, message: "", onConfirm: null });
+  const toast = useToast();
   // ✅ Added allPatients for unfiltered list
   const [allPatients, setAllPatients] = useState([]);
   const [patients, setPatients] = useState([]);
@@ -187,12 +225,20 @@ const [newTetanusRoute, setNewTetanusRoute] = useState("");
 const [newRegularGivenDate, setNewRegularGivenDate] = useState("");
 const [apptSortOrder, setApptSortOrder] = useState("newest");
 const [apptFilterType, setApptFilterType] = useState("");
+const [woundType, setWoundType] = useState("");
+const [severeType, setSevereType] = useState("");
+const today = new Date().toISOString().split("T")[0];
+const [pneumoniaDose2Type, setPneumoniaDose2Type] = useState("");
 
+const [regularGivenSevere, setRegularGivenSevere] = useState(today);
+const [regularStatusSevere, setRegularStatusSevere] = useState("✔️ Done");
 const isBooster = selectedProphylaxisType === "Booster";
 // REGULAR VACCINES
 const [newInjectionSite, setNewInjectionSite] = useState("");
 // ANTI-RABIES: Tetanus Toxoid
 const [tetanusInjectionSite, setTetanusInjectionSite] = useState("");
+
+ 
 
 const navigate = useNavigate();
 const [newRegularRoute, setNewRegularRoute] = useState("IM");
@@ -239,6 +285,7 @@ useEffect(() => {
       illOper: showView.ill_oper
         ? showView.ill_oper.split(", ").map(i => ({ option: i, custom: "" }))
         : [{ option: "", custom: "" }],
+        assessment: showView.assessment || "",
     });
   }
 }, [showView]);
@@ -334,7 +381,7 @@ useEffect(() => {
         setAppointments(appts);
       } catch (err) {
         console.error("Failed to load patient from QR:", err);
-        alert("Could not load patient details.");
+         toast.show("Could not load patient details.",err,"error");
       }
     }
   }
@@ -385,7 +432,7 @@ async function handleCreate(e) {
   const weightValue = parseFloat(newWeight);
 
   if (ageValue < 0 || isNaN(ageValue) || weightValue < 0 || isNaN(weightValue)) {
-    alert("Age and Weight must be non-negative numbers.");
+    toast.show("Age and Weight must be non-negative numbers.","warning");
     return;
   }
 
@@ -425,10 +472,10 @@ async function handleCreate(e) {
     resetFormFields();
     setShowCreateForm(false);
 
-    alert(`Patient created successfully!\nUsername: ${result.username}\nPassword: ${result.password}`);
+    toast.show(`Patient created successfully!\nUsername: ${result.username}\nPassword: ${result.password}`,"success");
   } catch (err) {
     console.error("Create failed:", err);
-    alert("Create failed: " + (err?.message || err));
+    toast.show("Create failed: " + (err?.message || err), "error");
   }
 }
 
@@ -440,14 +487,21 @@ const applySearchAndFilter = (query = searchQuery, type = filterType) => {
 
   // --- Search logic ---
   if (query.trim() !== "") {
-    const lowerQuery = query.toLowerCase();
-    results = results.filter(
-      (p) =>
-        p.first_name.toLowerCase().includes(lowerQuery) ||
-        p.last_name.toLowerCase().includes(lowerQuery) ||
-        (p.middle_name && p.middle_name.toLowerCase().includes(lowerQuery))
-    );
-  }
+  const lowerQuery = query.toLowerCase();
+
+  results = results.filter((p) => {
+    const fullName = [
+      p.first_name,
+      p.middle_name,
+      p.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return fullName.includes(lowerQuery);
+  });
+}
 
   // --- Sort logic ---
   switch (type) {
@@ -490,8 +544,15 @@ const applySearchAndFilter = (query = searchQuery, type = filterType) => {
 
   async function handleSaveAppointment(e) {
   e.preventDefault();
-  if (!newSchedule) return alert("Please select a schedule.");
+  if (!newSchedule) return toast.show("Please select a schedule.","warning");
+const route = newVaccRoute || "IM";
+const requiredDose = route === "ID" ? 0.1 : 1;
+const currentStock = await invoke("get_inventory_amount", { id: "vaxirab" });
 
+if (currentStock < requiredDose) {
+  toast.show(`❌ Insufficient stock: Vaxirab N has ${currentStock} dose(s) left.`, "error");
+  return;
+}
   // 🚫 Prevent same patient + same vaccine type + same schedule duplicates
   const duplicateConflict = appointments.some((a) => {
     if (editAppointment && a.id === editAppointment.id) return false; // skip itself
@@ -503,8 +564,8 @@ const applySearchAndFilter = (query = searchQuery, type = filterType) => {
   });
 
   if (duplicateConflict) {
-    alert(
-      `⚠️ This patient already has a ${selectedProphylaxisType || "similar"} appointment scheduled on ${newSchedule}.`
+    toast.show(
+      `⚠️ This patient already has a ${selectedProphylaxisType || "similar"} appointment scheduled on ${newSchedule}.`,"warning"
     );
     return;
   }
@@ -519,10 +580,17 @@ const applySearchAndFilter = (query = searchQuery, type = filterType) => {
     injectionSiteToSave = tetanusInjectionSite || null;
   }
 
-  if (newTetanusToxoid) {
+ const today = new Date().toISOString().split("T")[0];
+
+if (newTetanusToxoid && newTetanusDate === today) {
+
+  const tetanusStock = await invoke("get_inventory_amount", { id: "tetanus" });
+  if (tetanusStock < 1) {
+    toast.show(`❌ Insufficient stock: Tetanus Toxoid has ${tetanusStock} dose(s) left.`, "error");
+    return;
+  }
   inventoryManager.reduceByRoute("tetanus", "IM");
 }
-
 
 
   const payload = {
@@ -544,20 +612,20 @@ const applySearchAndFilter = (query = searchQuery, type = filterType) => {
     rig: !!newRIG,
     rig_date: newRIGDate || null,
     day_zero_date: dayZero || null,
-  day_three_date: isBooster ? null : (dayThree || null),
+  day_three_date: dayThree||null,
   day_seven_date: daySeven || null,
   day_fourteen_date: isBooster ? null : (dayFourteen || null),
-  day_thirty_date: dayThirty || null,
+  day_thirty_date: isBooster ? null : (dayThirty || null),
     injection_site: injectionSiteToSave,
   };
 
   try {
     if (editAppointment) {
       await updateAppointment(payload);
-      alert("Appointment updated successfully!");
+      toast.show("Appointment updated successfully!","success");
     } else {
       await createAppointment(payload);
-      alert("Appointment added successfully!");
+      toast.show("Appointment added successfully!","success");
     }
 
     // ✅ Refresh the appointment list
@@ -604,7 +672,7 @@ if (latestAntiRabies) {
     setShowAddAppointment(false); // Close modal
   } catch (err) {
     console.error("Error saving appointment:", err);
-    alert("Error saving appointment: " + err);
+    toast.show("Error saving appointment: " + err, "error");
   }
 }
 
@@ -622,18 +690,40 @@ const calculateAge = (dob) => {
   return age;
 };
 
+const isDobValid = (dob) => {
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dob)) return false;
+  const [m, d, y] = dob.split("/").map(Number);
+  const max = new Date(y, m, 0).getDate();
+  return d <= max;
+};
+
  const handleDateofBirthInput = (e) => {
   let input = e.target.value.replace(/\D/g, "");
+
+  // basic mask
   if (input.length >= 5)
     input = input.replace(/(\d{2})(\d{2})(\d{0,4}).*/, "$1/$2/$3");
   else if (input.length >= 3)
     input = input.replace(/(\d{2})(\d{0,2})/, "$1/$2");
+
+  // ---- NEW: calendar sanity ----
+  if (input.length === 10) {
+    const [mm, dd, yyyy] = input.split("/").map(Number);
+    const maxDay = new Date(yyyy, mm, 0).getDate(); // last day of that month
+    if (dd > maxDay) {
+      // clamp day to maximum valid
+      input = `${String(mm).padStart(2, "0")}/${String(maxDay).padStart(2, "0")}/${yyyy}`;
+      toast.show(`Invalid day for ${mm}/${yyyy}. Changed to last valid day (${maxDay}).`,"warning");
+    }
+  }
+
   setDateofBirth(input);
 
-  // Automatically calculate age
+  // auto-calc age
   const age = calculateAge(input);
   setNewAge(age);
 };
+
 const [showAddChoice, setShowAddChoice] = useState(false);
 const [showAntiRabiesForm, setShowAntiRabiesForm] = useState(false);
 const [showRegularVaccinationForm, setShowRegularVaccinationForm] = useState(false);
@@ -647,6 +737,15 @@ const [newRegularName, setNewRegularName] = useState(""); // for Flu
 const [newPneumoniaType, setNewPneumoniaType] = useState(""); // for Pneumonia
 const [newHepaDose, setNewHepaDose] = useState(""); // for Hepa B
 const [newRegularDate, setNewRegularDate] = useState("");
+// 🔹 For multi-dose regular schedules
+const [newRegularDate2, setNewRegularDate2] = useState("");
+const [newRegularDate3, setNewRegularDate3] = useState("");
+
+// 🔹 Flu schedule selector
+const [fluSched, setFluSched] = useState("");
+
+// 🔹 Pneumonia schedule selector
+const [pneumoSched, setPneumoSched] = useState("");
 const [doseDates, setDoseDates] = useState([]); 
 
 useEffect(() => {
@@ -703,108 +802,115 @@ function handleEditAppointment(appointment) {
   setShowAddAppointment(true);
 }
 
-async function handleDeleteAppointment() {
 
+async function handleDeleteAppointment() {
   const appt = showViewAppointment || viewRegularData;
 
   if (!appt || !appt.id) {
-    alert("Error: No appointment selected.");
+    toast.show("Error: No appointment selected.", "error");
     return;
   }
 
-  if (!confirm("Are you sure you want to delete this appointment?")) return;
+  setConfirmPopup({
+    show: true,
+    message: "Are you sure you want to delete this appointment?",
+    onConfirm: async () => {
+      setConfirmPopup({ show: false });
 
-  try {
-    const today = new Date().toISOString().split("T")[0];
+      const appt = showViewAppointment || viewRegularData;
+      if (!appt || !appt.id) {
+        toast.show("Error: No appointment selected.", "error");
+        return;
+      }
 
-    // ============================================
-    // 🔵 ANTI-RABIES RESTORE (only if done today)
-    // ============================================
-    if (showViewAppointment) {
+      try {
+        const today = new Date().toISOString().split("T")[0];
 
-      const route = (showViewAppointment.vaccroute || "IM").trim();
-      const amount = route === "ID" ? 0.1 : 1;
+        // ============================================
+        // 🔵 ANTI-RABIES RESTORE (only if given TODAY)
+        // ============================================
+        if (showViewAppointment) {
+          const route = (showViewAppointment.vaccroute || "IM").trim();
+          const amount = route === "ID" ? 0.1 : 1;
 
-      const doneKeys = [
-        "day_zero_given_date",
-        "day_three_given_date",
-        "day_seven_given_date",
-        "day_fourteen_given_date",
-        "day_thirty_given_date",
-      ];
+          const givenToday = [
+            showViewAppointment.day_zero_given_date,
+            showViewAppointment.day_three_given_date,
+            showViewAppointment.day_seven_given_date,
+            showViewAppointment.day_fourteen_given_date,
+            showViewAppointment.day_thirty_given_date,
+          ].some((d) => d === today);
 
-      const doneToday = doneKeys.some(
-        (k) => showViewAppointment[k] === today
-      );
+          if (givenToday) {
+            await inventoryManager.addStock("vaxirab", amount);
+          }
 
-      if (doneToday) {
-        await inventoryManager.addStock("vaxirab", amount);
+          // Tetanus Toxoid restore (only if given today)
+          const tetanusGiven = showViewAppointment.tetanus_date;
+          if (tetanusGiven === today) {
+            await inventoryManager.addStock("tetanus", 1);
+          }
+        }
+
+        // ============================================
+        // 🟢 REGULAR VACCINE RESTORE (if given today)
+        // ============================================
+        if (viewRegularData) {
+          const t = viewRegularData.regular_type;
+          const v = viewRegularData.vaccine_name;
+          let vaccineId = null;
+
+          if (t === "Flu Vaccine") vaccineId = "flu";
+          else if (t === "Pneumonia Vaccine") {
+            if (viewRegularData.pneumonia_type === "PCV13") vaccineId = "pcv13";
+            else if (viewRegularData.pneumonia_type === "PPSV23") vaccineId = "ppsv23";
+          } 
+          else if (t === "Anti-Tetanus") {
+            if (v === "Tetanus Toxoid") vaccineId = "tetanus";
+            else if (v === "ATS") vaccineId = "ats";
+            else if (v === "HTIG") vaccineId = "htig";
+          }
+          else if (t === "Hepa B Vaccine") vaccineId = "hepab";
+
+          const givenToday =
+  viewRegularData.regular_given_date === today ||
+  viewRegularData.regular_given_date2 === today ||
+  viewRegularData.regular_given_date3 === today;
+
+          if (vaccineId && givenToday) {
+            await inventoryManager.restoreRegular(vaccineId);
+          }
+        }
+
+        // ============================================
+        // ❌ DELETE APPOINTMENT
+        // ============================================
+        await invoke("delete_appointment", { id: appt.id });
+        toast.show("Appointment deleted successfully!", "success");
+
+        // Refresh
+        const updated = await getAppointments(showView.id);
+        setAppointments(updated);
+
+        // Close modal windows
+        setShowViewAppointment(null);
+        setShowViewRegular(false);
+        setViewRegularData(null);
+
+      } catch (err) {
+        console.error("Failed to delete appointment:", err);
+        toast.show("Failed to delete appointment: " + err, "error");
       }
     }
-
-    // ============================================
-    // 🟢 REGULAR VACCINE RESTORE (only if given today)
-    // ============================================
-   if (viewRegularData) {
-
-  const t = viewRegularData.regular_type;
-  const v = viewRegularData.vaccine_name;       // ⭐ THIS IS THE REAL TYPE
-  let vaccineId = null;
-
-  if (t === "Flu Vaccine") vaccineId = "flu";
-
-  else if (t === "Pneumonia Vaccine") {
-    if (viewRegularData.pneumonia_type === "PCV13") vaccineId = "pcv13";
-    else if (viewRegularData.pneumonia_type === "PPSV23") vaccineId = "ppsv23";
-  }
-
-  else if (t === "Anti-Tetanus") {
-    if (v === "Tetanus Toxoid") vaccineId = "tetanus";
-    else if (v === "ATS") vaccineId = "ats";
-    else if (v === "HTIG") vaccineId = "htig";
-  }
-
-  else if (t === "Hepa B Vaccine") vaccineId = "hepab";
-
-  const today = new Date().toISOString().split("T")[0];
-  const givenToday = viewRegularData.regular_given_date === today;
-
-  if (vaccineId && givenToday) {
-    await inventoryManager.restoreRegular(vaccineId);
-  }
+  });
 }
-
-
-    // ============================================
-    // ❌ DELETE APPOINTMENT
-    // ============================================
-    await invoke("delete_appointment", { id: appt.id });
-
-    alert("Appointment deleted successfully!");
-
-    // Refresh
-    const updated = await getAppointments(showView.id);
-    setAppointments(updated);
-
-    // Close modals
-    setShowViewAppointment(null);
-    setShowViewRegular(false);
-    setViewRegularData(null);
-
-  } catch (err) {
-    console.error("Failed to delete appointment:", err);
-    alert("Failed to delete appointment: " + err);
-  }
-}
-
 
 
 async function handleSaveRegularAppointment(e) {
   e.preventDefault();
+  const today = new Date().toISOString().split("T")[0];
 
-  // -------------------------------------
-  // 1️⃣ Prevent Duplicate Schedule
-  // -------------------------------------
+  // Prevent Duplicate Schedule
   const duplicateConflict = appointments.some((a) => {
     if (editRegular && a.id === editRegular.id) return false;
 
@@ -818,15 +924,13 @@ async function handleSaveRegularAppointment(e) {
   });
 
   if (duplicateConflict) {
-    alert(`⚠️ This patient already has a ${newRegularType} scheduled on ${newRegularDate}.`);
+    toast.show(`⚠️ This patient already has a ${newRegularType} scheduled on ${newRegularDate}.`,"warning");
     return;
   }
 
   const routeToSave = newRegularRoute || "IM";
 
-  // -------------------------------------
-  // 2️⃣ Build Base Payload
-  // -------------------------------------
+  // Build Base Payload
   let payload = {
     id: editRegular ? editRegular.id : null,
     patient_id: showView.id,
@@ -838,11 +942,32 @@ async function handleSaveRegularAppointment(e) {
     regular_route: routeToSave,
     injection_site: newInjectionSite || null,
     status: "Pending",
+
+    // core multi-dose fields (ensure they exist)
+    regular_date: newRegularDate || null,
+    regular_date2: newRegularDate2 || null,
+    regular_date3: newRegularDate3 || null,
+
+    // initialize given & statuses to null/upcoming unless Hepa B handled below
+    regular_given_date: null,
+    regular_given_date2: null,
+    regular_given_date3: null,
+
+    regular_status: newRegularDate ? "🔴 Upcoming" : null,
+    regular_status2: newRegularDate2 ? "🔴 Upcoming" : null,
+    regular_status3: newRegularDate3 ? "🔴 Upcoming" : null,
+    regular_given_severe: woundType === "Severe" ? regularGivenSevere : null,
+regular_status_severe: woundType === "Severe" ? regularStatusSevere : "Pending",
+wound_type: woundType || null,
+additional_tetanus: newRegularName || null,   // TT, ATS, HTIG
+vaccine_name: newRegularName || null,   
+severe_treatment: woundType === "Severe" ? severeType : null,
+pneumonia_type: newPneumoniaType || null,     // Dose 1 (PCV13 or PPSV23)
+pneumonia_type2: pneumoniaDose2Type || null,
+
   };
 
-  // -------------------------------------
-  // 3️⃣ Hepa B (3-Dose)
-  // -------------------------------------
+  // Hepa B (3-Dose)
   if (newRegularType === "Hepa B Vaccine") {
     payload.regular_date = doseDates[0].date;
     payload.regular_given_date = newRegularGivenDate || null;
@@ -854,72 +979,139 @@ async function handleSaveRegularAppointment(e) {
     payload.hepa_b_status1 = "🔴 Upcoming";
     payload.hepa_b_status2 = "🔴 Upcoming";
     payload.hepa_b_status3 = "🔴 Upcoming";
+
+    // clear regular-specific given/status because hepa b uses its own fields
+    payload.regular_given_date = null;
+    payload.regular_status = null;
+    payload.regular_given_date2 = null;
+    payload.regular_status2 = null;
+    payload.regular_given_date3 = null;
+    payload.regular_status3 = null;
+    
+  } // MULTI-DOSE (Hepa B logic applied)
+if (!editRegular) {
+  // NEW vaccine → initialize statuses
+  payload.regular_status = "🔴 Upcoming";
+  payload.regular_status2 = newRegularDate2 ? "🔴 Upcoming" : null;
+  payload.regular_status3 = newRegularDate3 ? "🔴 Upcoming" : null;
+
+  payload.regular_given_date = null;
+  payload.regular_given_date2 = null;
+  payload.regular_given_date3 = null;
+
+} else {
+  // EDIT → preserve old data
+  payload.regular_status = editRegular.regular_status;
+  payload.regular_status2 = editRegular.regular_status2;
+  payload.regular_status3 = editRegular.regular_status3;
+
+  payload.regular_given_date = editRegular.regular_given_date;
+  payload.regular_given_date2 = editRegular.regular_given_date2;
+  payload.regular_given_date3 = editRegular.regular_given_date3;
+}
+// SEVERE TETANUS LOGIC
+if (!editRegular) {
+  // new appointment
+  payload.regular_given_severe = woundType === "Severe" ? regularGivenSevere : null;
+  payload.regular_status_severe = woundType === "Severe" ? "✔️ Done" : null;
+
+} else {
+  // editing existing record → keep old values
+  payload.regular_given_severe = editRegular.regular_given_severe;
+  payload.regular_status_severe = editRegular.regular_status_severe;
+}
+if (newRegularType === "Anti-Tetanus") {
+  // Always save wound type
+  payload.wound_type = woundType || null;
+
+  // Always save main TT field
+  payload.vaccine_name = "Tetanus Toxoid";
+
+  // Show correct Additional Treatment (HTIG/ATS)
+  payload.additional_tetanus =
+    woundType === "Severe" ? severeType : null;
+
+  // Severe-only → auto set severe D0 info
+  if (!editRegular) {
+    // NEW record
+    payload.regular_given_severe =
+      woundType === "Severe" ? today : null; // auto-given today
+
+    payload.regular_status_severe =
+      woundType === "Severe" ? "✔️ Done" : null;
+  } else {
+    // EDIT → Keep old values
+    payload.regular_given_severe = editRegular.regular_given_severe;
+    payload.regular_status_severe = editRegular.regular_status_severe;
   }
+}
+if (newRegularType === "Pneumonia Vaccine") {
+  payload.regular_date = newRegularDate;
+  payload.regular_date2 = newRegularDate2;
 
-  // -------------------------------------
-  // 4️⃣ AUTO-DONE Vaccines
-  // -------------------------------------
-  else {
-    payload.regular_date = newRegularDate;
-    payload.regular_given_date = newRegularGivenDate || null;
-    payload.regular_status = "✔️ Done";
+  // Some schedules generate Dose 3
+  payload.regular_date3 = newRegularDate3 || null;
 
-    payload.hepa_b_dose1 = null;
-    payload.hepa_b_dose2 = null;
-    payload.hepa_b_dose3 = null;
-    payload.hepa_b_status1 = null;
-    payload.hepa_b_status2 = null;
-    payload.hepa_b_status3 = null;
+  // Always store opposite type for Dose 2
+  payload.pneumonia_type = newPneumoniaType;
+  payload.pneumonia_type2 = pneumoniaDose2Type;
 
-    // Vaccine-specific fields
-    if (newRegularType === "Anti-Tetanus") payload.vaccine_name = newRegularName;
-    if (newRegularType === "Flu Vaccine") payload.vaccine_name = newRegularName;
-    if (newRegularType === "Pneumonia Vaccine") payload.pneumonia_type = newPneumoniaType;
+  // Status logic (preserve if editing)
+  if (!editRegular) {
+    payload.regular_status = "🔴 Upcoming";
+    payload.regular_status2 = "🔴 Upcoming";
+    payload.regular_status3 = newRegularDate3 ? "🔴 Upcoming" : null;
+
+    payload.regular_given_date = null;
+    payload.regular_given_date2 = null;
+    payload.regular_given_date3 = null;
+  } else {
+    payload.regular_status = editRegular.regular_status;
+    payload.regular_status2 = editRegular.regular_status2;
+    payload.regular_status3 = editRegular.regular_status3;
+
+    payload.regular_given_date = editRegular.regular_given_date;
+    payload.regular_given_date2 = editRegular.regular_given_date2;
+    payload.regular_given_date3 = editRegular.regular_given_date3;
   }
-
-  // -------------------------------------
-  // 5️⃣ UNIVERSAL DEDUCTION LOGIC
-  // -------------------------------------
-  const today = new Date().toISOString().split("T")[0];
-  const isTodayGiven = newRegularGivenDate === today;
-
+}
+  // UNIVERSAL inventory check BEFORE saving
   let vaccineId = null;
+  if (newRegularType === "Flu Vaccine") vaccineId = "flu";
+  else if (newRegularType === "Pneumonia Vaccine") {
+    if (newPneumoniaType === "PCV13") vaccineId = "pcv13";
+    else if (newPneumoniaType === "PPSV23") vaccineId = "ppsv23";
+  } else if (newRegularType === "Anti-Tetanus") {
+    if (newRegularName === "Tetanus Toxoid") vaccineId = "tetanus";
+    else if (newRegularName === "ATS") vaccineId = "ats";
+    else if (newRegularName === "HTIG") vaccineId = "htig";
+  } else if (newRegularType === "Hepa B Vaccine") vaccineId = null;
 
+  // If the first dose is being *given now* at creation, ensure stock exists
+  
+  const isGivenNow = newRegularGivenDate === today;
 
+  if (vaccineId && isGivenNow) {
+    const currentStock = await invoke("get_inventory_amount", { id: vaccineId });
+    if (currentStock < 1) {
+      toast.show(`❌ Insufficient stock: ${newRegularType} has ${currentStock} dose(s) left.`, "error");
+      return;
+    }
+  }
 
-if (newRegularType === "Flu Vaccine") vaccineId = "flu";
-
-else if (newRegularType === "Pneumonia Vaccine") {
-  if (newPneumoniaType === "PCV13") vaccineId = "pcv13";
-  else if (newPneumoniaType === "PPSV23") vaccineId = "ppsv23";
-}
-
-else if (newRegularType === "Anti-Tetanus") {
-  if (newRegularName === "Tetanus Toxoid") vaccineId = "tetanus";
-  else if (newRegularName === "ATS") vaccineId = "ats";
-  else if (newRegularName === "HTIG") vaccineId = "htig";
-}
-
-else if (newRegularType === "Hepa B Vaccine") vaccineId = null;
-
-  // Deduct only if:
-  // ✔ Not Hepa B
-  // ✔ Auto-done
-  // ✔ Given TODAY
-  if (vaccineId && newRegularType !== "Hepa B Vaccine" && isTodayGiven) {
+  // Deduct if this creation is marking a dose given today (non-HepaB)
+  if (vaccineId && newRegularType !== "Hepa B Vaccine" && isGivenNow) {
     await inventoryManager.takeRegular(vaccineId);
   }
 
-  // -------------------------------------
-  // 6️⃣ SAVE to DB
-  // -------------------------------------
+  // SAVE to DB
   try {
     if (editRegular) {
       await invoke("update_appointment", { appointment: payload });
-      alert("Regular vaccine updated!");
+      toast.show("Regular vaccine updated!","success");
     } else {
       await invoke("create_appointment", { appointment: payload });
-      alert("Regular vaccine added!");
+      toast.show("Regular vaccine added!","success");
     }
 
     // Refresh List
@@ -953,19 +1145,22 @@ else if (newRegularType === "Hepa B Vaccine") vaccineId = null;
     setShowAddRegular(false);
   } catch (err) {
     console.error("Save failed:", err);
-    alert("Failed to save.");
+    toast.show("Failed to save: " + err, "error");
   }
 }
 
 
 
-// helper: mark regular vaccine dose done (place inside Patient.jsx component)
+
 const markRegularDone = async (appt) => {
   try {
-    if (!appt || !appt.id) return alert("No appointment selected");
+    if (!appt || !appt.id)
+      return toast.show("No appointment selected", "warning");
 
     const today = new Date();
-    const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000)
+    const localToday = new Date(
+      today.getTime() - today.getTimezoneOffset() * 60000
+    )
       .toISOString()
       .split("T")[0];
 
@@ -976,87 +1171,110 @@ const markRegularDone = async (appt) => {
       return td >= sd;
     };
 
-    // Hepa B dose sequence
-    const doses = [
-      { sched: appt.hepa_b_dose1, given: "hepa_b_given1", status: "hepa_b_status1" },
-      { sched: appt.hepa_b_dose2, given: "hepa_b_given2", status: "hepa_b_status2" },
-      { sched: appt.hepa_b_dose3, given: "hepa_b_given3", status: "hepa_b_status3" },
-    ];
+    // -----------------------------------------------------
+    // 🔥 BUILD DOSE SEQUENCE BASED ON VACCINE TYPE
+    // -----------------------------------------------------
+    let doses = [];
 
-    let nextIndex = doses.findIndex((d, i) => {
-      const prevDone = i === 0 ? true : appt[`hepa_b_status${i}`] === "✔️ Done";
-      const s = appt[d.status] || "";
-      const pending = !s.toLowerCase().includes("done");
-      return pending && prevDone && isDue(d.sched);
+    if (appt.regular_type === "Hepa B Vaccine") {
+      doses = [
+        { sched: appt.hepa_b_dose1, given: "hepa_b_given1", status: "hepa_b_status1" },
+        { sched: appt.hepa_b_dose2, given: "hepa_b_given2", status: "hepa_b_status2" },
+        { sched: appt.hepa_b_dose3, given: "hepa_b_given3", status: "hepa_b_status3" },
+      ];
+
+    } else {
+      // Multi-dose logic for Tetanus, Flu, Pneumonia
+      doses = [
+        { sched: appt.regular_date,  given: "regular_given_date",  status: "regular_status" },
+        { sched: appt.regular_date2, given: "regular_given_date2", status: "regular_status2" },
+        { sched: appt.regular_date3, given: "regular_given_date3", status: "regular_status3" },
+      ].filter(d => d.sched); // remove empty slots
+    }
+
+    // -----------------------------------------------------
+    // 🔥 FIND NEXT PENDING, DUE DOSE
+    // -----------------------------------------------------
+    const nextIndex = doses.findIndex((d, i) => {
+      const prevDone =
+        i === 0
+          ? true
+          : (doses[i - 1].status &&
+             appt[doses[i - 1].status] &&
+             appt[doses[i - 1].status].toLowerCase().includes("done"));
+
+      const storedStatus = appt[d.status] || "";
+      const isPending = !storedStatus.toLowerCase().includes("done");
+
+      return isPending && prevDone && isDue(d.sched);
     });
 
     if (nextIndex === -1) {
-      const upcoming = doses.find((d) => new Date(d.sched) > new Date());
-      if (upcoming) return alert("Next dose is locked (future date).");
-      return alert("No pending Hepa B dose to mark.");
+      const upcoming = doses.find(d => new Date(d.sched) > new Date());
+      if (upcoming) return toast.show("Next dose is upcoming / locked.", "info");
+      return toast.show("No pending dose to mark.", "info");
     }
 
-    // --- Identify correct vaccine ID ---
-    let vaccineId = null;
-
-if (appt.regular_type === "Hepa B Vaccine") {
-  vaccineId = "hepab";
-
-} else if (appt.regular_type === "Flu Vaccine") {
-  vaccineId = "flu";
-
-} else if (appt.regular_type === "Pneumonia Vaccine") {
-  // detect which pneumonia vaccine was selected
-  if (appt.pneumonia_type === "PCV13") vaccineId = "pcv13";
-  else if (appt.pneumonia_type === "PPSV23") vaccineId = "ppsv23";
-
-} else if (appt.regular_type === "Anti-Tetanus") {
-  vaccineId = "tetanus";
-
-} else if (appt.regular_type === "ATS") {
-  vaccineId = "ats";
-
-} else if (appt.regular_type === "HTIG") {
-  vaccineId = "htig";
-}
-
-
-    // --- Deduct EXACTLY 1 dose for ALL regular vaccines ---
-    if (vaccineId) {
-  await inventoryManager.takeRegular(vaccineId);   // deduct 1 dose properly
-
-    }
-
-    // --- Apply DB updates ---
     const dose = doses[nextIndex];
 
+    // -----------------------------------------------------
+    // 🔥 Identify vaccineID for inventory deduction
+    // -----------------------------------------------------
+    let vaccineId = null;
+
+    if (appt.regular_type === "Hepa B Vaccine") {
+      vaccineId = "hepab";
+
+    } else if (appt.regular_type === "Flu Vaccine") {
+      vaccineId = "flu";
+
+    } else if (appt.regular_type === "Pneumonia Vaccine") {
+      if (appt.pneumonia_type === "PCV13") vaccineId = "pcv13";
+      if (appt.pneumonia_type === "PPSV23") vaccineId = "ppsv23";
+
+    } else if (appt.regular_type === "Anti-Tetanus") {
+      if (appt.vaccine_name === "Tetanus Toxoid") vaccineId = "tetanus";
+      if (appt.vaccine_name === "HTIG") vaccineId = "htig";
+      if (appt.vaccine_name === "ATS") vaccineId = "ats";
+    }
+
+    // -----------------------------------------------------
+    // 🔥 Deduct 1 dose from inventory
+    // -----------------------------------------------------
+    if (vaccineId) {
+      await inventoryManager.takeRegular(vaccineId);
+    }
+
+    // -----------------------------------------------------
+    // 🔥 APPLY DB UPDATES
+    // -----------------------------------------------------
     await invoke("status_apointment_update", {
       id: appt.id,
-      field: dose.given,
+      field: dose.given, // e.g., regular_given_date2
       value: localToday,
     });
 
     await invoke("status_apointment_update", {
       id: appt.id,
-      field: dose.status,
+      field: dose.status, // e.g., regular_status2
       value: "✔️ Done",
     });
 
     // Refresh UI
     await new Promise((r) => setTimeout(r, 150));
     const updated = await getAppointments(showView.id);
-    setAppointments(updated);
+setAppointments(updated);
 
-    const refreshed = updated.find((a) => a.id === appt.id);
-    setViewRegularData(refreshed);
+// Keep current popup on the correct vaccine
+const refreshed = updated.find((a) => a.id === appt.id);
+if (refreshed) setViewRegularData(refreshed);
+setShowViewRegular(true);
 
-    alert("✔ Regular vaccine dose marked as done");
-
+    toast.show("✔ Dose marked as done", "success");
   } catch (err) {
-    alert("Error: " + err);
+    toast.show("Error: " + err, "error");
   }
 };
-
 
 
 async function handleEditRegular(appt) {
@@ -1064,16 +1282,22 @@ async function handleEditRegular(appt) {
   setShowAddRegular(true);  // open the popup
   setAppointmentType("Regular");
 
-  // Prefill fields
-  setNewRegularType(appt.regular_type);
-  setNewRegularGivenDate(editRegular.regular_given_date || "");
-setNewRegularDate(editRegular.regular_date || "");
+  // Prefill fields (use appt values directly)
+  setNewRegularType(appt.regular_type || "");
+  setNewRegularDate(appt.regular_date || "");
+  setNewRegularDate2(appt.regular_date2 || "");
+  setNewRegularDate3(appt.regular_date3 || "");
 
+  setNewRegularGivenDate(appt.regular_given_date || "");
   setNewRegularRoute(appt.regular_route || "IM");
   setNewInjectionSite(appt.injection_site || "");
 
   setNewRegularName(appt.vaccine_name || "");
   setNewPneumoniaType(appt.pneumonia_type || "");
+  if (appt.regular_type === "Pneumonia Vaccine") {
+    setNewPneumoniaType(appt.pneumonia_type || "");
+    setPneumoniaDose2Type(appt.pneumonia_type2 || "");
+  }
 
   // Hepa B doses (if needed)
   if (appt.regular_type === "Hepa B Vaccine") {
@@ -1082,24 +1306,30 @@ setNewRegularDate(editRegular.regular_date || "");
       { label: "2nd Dose (1 month later)", date: appt.hepa_b_dose2 },
       { label: "3rd Dose (6 months later)", date: appt.hepa_b_dose3 },
     ]);
+  } else {
+    setDoseDates([]);
   }
 }
+
 
 useEffect(() => {
   if (editRegular) {
     setNewRegularType(editRegular.regular_type || "");
     setNewRegularDate(editRegular.regular_date || "");
+    setNewRegularDate2(editRegular.regular_date2 || "");
+    setNewRegularDate3(editRegular.regular_date3 || "");
+
     setNewRegularName(editRegular.vaccine_name || "");
     setNewPneumoniaType(editRegular.pneumonia_type || "");
     setNewRegularRoute(editRegular.regular_route || "IM");
     setNewInjectionSite(editRegular.injection_site || "");
 
-    // FIXED LINE
     setNewRegularGivenDate(
       editRegular.regular_given_date || editRegular.regular_date || ""
     );
   }
 }, [editRegular]);
+
 
 function resetRegularFields() {
   setNewRegularType("");
@@ -1111,6 +1341,8 @@ function resetRegularFields() {
   setNewRegularDate("");
   setNewRegularGivenDate("");
   setDoseDates([]);
+  setWoundType("");
+setSevereType("");
   
 
   setEditRegular(null); // Important: ensure no leftover edit data
@@ -1165,6 +1397,141 @@ const getRegularStatusDisplay = (appt) => {
   return "—";
 };
 
+function applyPreset(presetKey, days) {
+  const today = getTodayPH();
+
+  const setDay = (d) => (d == null ? null : addDays(today, d));
+
+  // Clear all first
+  setDayZero("");
+  setDayThree("");
+  setDaySeven("");
+  setDayFourteen("");
+  setDayThirty("");
+
+  // Route selection mapping
+  const routeMap = {
+    site_id: "ID",
+    ipc_id: "ID",
+    zagreb_im: "IM",
+    short_im: "IM",
+    pre_id: "ID",
+    pre_im: "IM",
+    trc_id: "ID",
+    esen_im: "IM",
+  };
+
+  // If not clinic custom, set route if available
+  if (presetKey !== "clinic_custom") {
+    const presetRoute = routeMap[presetKey];
+    if (presetRoute) setNewVaccRoute(presetRoute);
+  }
+
+  // Set prophylaxis type automatically for pre vs post
+  if (presetKey && presetKey.startsWith("pre")) {
+    setSelectedProphylaxisType("Pre Exposure Prophylaxis");
+  } else if (presetKey && presetKey !== "clinic_custom") {
+    // Default to Post Exposure for non-pre presets
+    setSelectedProphylaxisType("Post Exposure Prophylaxis");
+  }
+
+  // D0 should always reflect today's PH date when included
+  if (Array.isArray(days)) {
+    if (days.includes(0)) setDayZero(today);
+    if (days.includes(3)) setDayThree(setDay(3));
+    if (days.includes(7)) setDaySeven(setDay(7));
+    if (days.includes(14)) setDayFourteen(setDay(14));
+    if (days.includes(30)) setDayThirty(setDay(30));
+  } else {
+    // safety: if days missing, ensure D0 is set
+    setDayZero(today);
+  }
+
+  // mark that these are generated values (optional: used elsewhere)
+  setIsSavedGivenDates(false);
+}
+
+// Auto-fill D0 and generate dose dates like Hepa B logic
+useEffect(() => {
+  if (!newRegularType) return;
+
+  // Always set D0 = today
+  setNewRegularDate(todayPH);
+
+  if (newRegularType === "Anti-Tetanus") {
+    setNewRegularDate2(addDays(todayPH, 30));
+    setNewRegularDate3(addMonths(todayPH, 6));
+  }
+
+  if (newRegularType === "Flu Vaccine") {
+    if (fluSched === "D0-D30") setNewRegularDate2(addDays(todayPH, 30));
+    if (fluSched === "D0-1YR") setNewRegularDate2(addMonths(todayPH, 12));
+    setNewRegularDate3("");
+  }
+
+  if (newRegularType === "Pneumonia Vaccine") {
+    if (pneumoSched === "D0-1YR") {
+      setNewRegularDate2(addMonths(todayPH, 12));
+      setNewRegularDate3("");
+    }
+    if (pneumoSched === "D0-8WKS-1YR") {
+      setNewRegularDate2(addDays(todayPH, 56));
+      setNewRegularDate3(addMonths(todayPH, 12));
+    }
+  }
+
+  if (newRegularType === "Hepa B Vaccine") {
+    const d = new Date(todayPH);
+    setDoseDates([
+      { label: "1st Dose", date: todayPH },
+      { label: "2nd Dose", date: addMonths(d, 1) },
+      { label: "3rd Dose", date: addMonths(d, 6) }
+    ]);
+
+    setNewRegularDate(todayPH);
+    setNewRegularDate2(addMonths(d, 1));
+    setNewRegularDate3(addMonths(d, 6));
+  }
+}, [newRegularType, fluSched, pneumoSched]);
+
+useEffect(() => {
+  if (!newRegularType) return;
+
+  const today = todayPH;
+
+  setNewRegularDate(today);
+
+  if (newRegularType === "Anti-Tetanus") {
+    setNewRegularDate2(addDays(today, 30));
+    setNewRegularDate3(addMonths(today, 6));
+  }
+
+  if (newRegularType === "Flu Vaccine") {
+    if (fluSched === "D0-D30") setNewRegularDate2(addDays(today, 30));
+    if (fluSched === "D0-1YR") setNewRegularDate2(addMonths(today, 12));
+    setNewRegularDate3(""); // Flu has max 2 doses
+  }
+
+  if (newRegularType === "Pneumonia Vaccine") {
+    if (pneumoSched === "D0-1YR") {
+      setNewRegularDate2(addMonths(today, 12));
+      setNewRegularDate3("");
+    }
+    if (pneumoSched === "D0-8WKS-1YR") {
+      setNewRegularDate2(addDays(today, 56));
+      setNewRegularDate3(addMonths(today, 12));
+    }
+  }
+
+  if (newRegularType === "Hepa B Vaccine") {
+    setDoseDates([
+      { label: "1st Dose", date: today },
+      { label: "2nd Dose (1 month later)", date: addMonths(new Date(today), 1) },
+      { label: "3rd Dose (6 months later)", date: addMonths(new Date(today), 6) }
+    ]);
+  }
+}, [newRegularType, fluSched, pneumoSched]);
+
   // ------------------ JSX RETURN ------------------
   return (
     <div className="patientDiv">
@@ -1187,9 +1554,10 @@ const getRegularStatusDisplay = (appt) => {
             <option value="alphabetical">Last Name Ascending</option>
             <option value="dataDsc">Last Name Descending</option>
           </select>
+          {(userRole === "desk") && (
           <button className="createBtn" onClick={handleOpenCreateForm}>
             Create
-          </button>
+          </button> )}
          <button
   
   className="archiveToggleBtn"
@@ -1230,7 +1598,7 @@ const getRegularStatusDisplay = (appt) => {
   onChange={(e) => setNewAddress(e.target.value)}
   required
 >
-  <option value="">Select Address</option>
+  <option value="" disabled hidden>Select Address</option>
   <optgroup label="Cities">
     <option value="Legazpi City">Legazpi City</option>
     <option value="Ligao City">Ligao City</option>
@@ -1257,7 +1625,7 @@ const getRegularStatusDisplay = (appt) => {
 
                 <select
                   className="Gender" value={newGender} onChange={(e) => setNewGender(e.target.value)} required>
-                   <option value=""> Select Gender </option>
+                   <option value="" disabled hidden> Select Gender </option>
                    <option value="Male">Male</option>
                    <option value="Female">Female</option>
                    <option value="Other">Other</option>
@@ -1307,7 +1675,8 @@ const getRegularStatusDisplay = (appt) => {
               {/* BUTTONS */}
 
               <div className="popupActions">
-                <button className="SubmitBtn" type="submit">
+                
+                <button className="SubmitBtn" type="submit"  disabled={!isDobValid(newDateofBirth)}>
                   Submit
                 </button>
                 <button className="CancelBtn" type="button" onClick={() => {
@@ -1356,7 +1725,7 @@ const getRegularStatusDisplay = (appt) => {
   className="UpdatePasswordBtn"
   onClick={async () => {
     if (!showView.newPassword || showView.newPassword.trim() === "") {
-      alert("Please enter a new password!");
+      toast.show("Please enter a new password!", "warning");
       return;
     }
 
@@ -1373,10 +1742,10 @@ const getRegularStatusDisplay = (appt) => {
       // update local state to reflect server data, clear input
       setShowView(prev => ({ ...prev, ...updated, newPassword: "" }));
 
-      alert("Password updated successfully!");
+      toast.show("Password updated successfully!","success");
     } catch (err) {
       console.error("Failed to update password:", err);
-      alert("Failed to update password: " + err);
+      toast.show("Failed to update password: " + err,"error");
     }
   }}
 >
@@ -1404,37 +1773,52 @@ const getRegularStatusDisplay = (appt) => {
               <p><b>Address:</b> {showView.address}</p>
            <div className="modal-buttons"> <button className="Closebtn" onClick={() => setShowView(null)}>X</button>
            </div>
-          <div className="archivebtn2">
-  {!viewArchived ? (
-    <button
-      className="Archive"
-      onClick={async () => {
-        if (window.confirm(`Archive ${showView.first_name} ${showView.last_name}?`)) {
-          await archivePatient(showView.id);
-          alert("Patient archived successfully!");
-          setShowView(null);
-          loadPatients(); // refresh active list
-        }
-      }}
-    >
-      Archive
-    </button>
-  ) : (
-    <button
-      className="Restore"
-      onClick={async () => {
-        if (window.confirm(`Restore ${showView.first_name} ${showView.last_name}?`)) {
-          await restorePatient(showView.id);
-          alert("Patient restored successfully!");
-          setShowView(null);
-          loadArchivedPatients(); // refresh archive list
-        }
-      }}
-    >
-      Restore
-    </button>
+  <div className="archivebtn2">
+    {userRole === "admin" && (
+    <>
+      {!viewArchived ? (
+        <button
+          className="Archive"
+          onClick={async () => {
+            setConfirmPopup({
+              show: true,
+              message: `Archive ${showView.first_name} ${showView.last_name}?`,
+              onConfirm: async () => {
+                setConfirmPopup({ show: false });
+                await archivePatient(showView.id);
+                toast.show("Patient archived successfully!", "success");
+                setShowView(null);
+                loadPatients();
+              },
+            });
+          }}
+        >
+          Archive
+        </button>
+      ) : (
+        <button
+          className="Restore"
+          onClick={async () => {
+            setConfirmPopup({
+              show: true,
+              message: `Restore ${showView.first_name} ${showView.last_name}?`,
+              onConfirm: async () => {
+                setConfirmPopup({ show: false });
+                await restorePatient(showView.id);
+                toast.show("Patient restored successfully!", "success");
+                setShowView(null);
+                loadArchivedPatients();
+              },
+            });
+          }}
+        >
+          Restore
+        </button>
+      )}
+    </>
   )}
 </div>
+
               </div>
               <h4 className="section-title"></h4>
              <div className="title2">
@@ -1484,11 +1868,9 @@ const getRegularStatusDisplay = (appt) => {
               <option value="" disabled hidden>Previous Vaccine</option>
               <option value="None">None</option>
               <option value="Anti-Rabies">Anti-Rabies</option>
-              <option value="Tetanus">Tetanus</option>
+              <option value="Anti-Tetanus">Anti-Tetanus</option>
               <option value="Hepatitis B">Hepatitis B</option>
               <option value="COVID-19">COVID-19</option>
-              <option value="Pre-Exposure Prophylaxis">Pre-Exposure Prophylaxis</option>
-              <option value="Post-Exposure Prophylaxis">Post-Exposure Prophylaxis</option>
               <option value="Flu">Flu</option>
               <option value="Other">Other</option>
             </select>
@@ -1562,6 +1944,10 @@ const getRegularStatusDisplay = (appt) => {
             >
               <option value="" disabled hidden>Select Allergy</option>
               <option value="None">None</option>
+              <option value="Eggs">Eggs</option>
+              <option value="Antibiotics">Antibiotics</option>
+              <option value="Human Albumin">Human Albumin</option>
+              <option value="Gelatin">Gelatin</option>
               <option value="Peanuts">Peanuts</option>
               <option value="Penicillin">Penicillin</option>
               <option value="Seafood">Seafood</option>
@@ -1638,10 +2024,14 @@ const getRegularStatusDisplay = (appt) => {
           >
             <option value="" disabled hidden>Select Illness / Operation</option>
             <option value="None">None</option>
+            <option value="HIV/AIDS">HIV/AIDS</option>
+            <option value="Cancer">Cancer</option>
+            <option value="Asthma">Asthma</option>
+            <option value="Autoimmune Disease">Autoimmune Disesase</option>
+            <option value="Severe Acute Illness">Severe Acute Illness</option>
             <option value="Appendectomy">Appendectomy</option>
             <option value="Diabetes">Diabetes</option>
             <option value="Hypertension">Hypertension</option>
-            <option value="Asthma">Asthma</option>
             <option value="Other">Other</option>
           </select>
 
@@ -1699,9 +2089,9 @@ const getRegularStatusDisplay = (appt) => {
     <div className="assesinp">
     
     <textarea
-  value={showView.assessment || ""}
+  value={editedMedical.assessment || ""}
   onChange={(e) =>
-    setShowView((prev) => ({ ...prev, assessment: e.target.value }))
+    setEditedMedical((prev) => ({ ...prev, assessment: e.target.value }))
   }
    style={{
     resize: "none",
@@ -1719,48 +2109,49 @@ const getRegularStatusDisplay = (appt) => {
 
 <div className="medicalButtons">
   {!isEditingMedical ? (
-    <button
-      className="EditBtn"
-      onClick={() => setIsEditingMedical(true)}
-    >
-      Edit
-    </button>
+    <>
+      {(userRole === "doctor") && (
+        <button className="EditBtn" onClick={() => setIsEditingMedical(true)}>
+          Edit
+        </button>
+      )}
+    </>
   ) : (
     <>
-     <button
-  className="SaveBtn"
-  onClick={async () => {
-    try {
-      await invoke("update_patient_medical", {
-        id: showView.id,
-      prevVacc: editedMedical.prevVaccs
-          .map(v => (v.option === "Other" ? v.custom : v.option))
-          .filter(Boolean)
-          .join(", "), // Changed from prev_vacc
-      allergies: editedMedical.allergies
-          .map(a => (a.option === "Other" ? a.custom : a.option))
-          .filter(Boolean)
-          .join(", "),
-      illOper: editedMedical.illOper
-          .map(i => (i.option === "Other" ? i.custom : i.option))
-          .filter(Boolean)
-          .join(", "),// Changed from ill_oper
-      assessment: showView.assessment || "",
-      });
-       alert("Medical details updated successfully!");
-      setIsEditingMedical(false);
+  
+      <button
+        className="SaveBtn"
+        onClick={async () => {
+          try {
+            await invoke("update_patient_medical", {
+              id: showView.id,
+              prevVacc: editedMedical.prevVaccs
+                .map((v) => (v.option === "Other" ? v.custom : v.option))
+                .filter(Boolean)
+                .join(", "),
+              allergies: editedMedical.allergies
+                .map((a) => (a.option === "Other" ? a.custom : a.option))
+                .filter(Boolean)
+                .join(", "),
+              illOper: editedMedical.illOper
+                .map((i) => (i.option === "Other" ? i.custom : i.option))
+                .filter(Boolean)
+                .join(", "),
+              assessment: editedMedical.assessment || "",
+            });
+            toast.show("Medical details updated successfully!", "success");
+            setIsEditingMedical(false);
 
-      // Refresh patient info after save
-      const refreshed = await invoke("get_patient_with_user", { id: showView.id });
-      setShowView(refreshed);
-    } catch (err) {
-      console.error("Update failed:", err);
-      alert("Failed to update medical history: " + err);
-    }
-  }}
->
-  Save
-</button>
+            const refreshed = await invoke("get_patient_with_user", { id: showView.id });
+            setShowView(refreshed);
+          } catch (err) {
+            console.error("Update failed:", err);
+            toast.show("Failed to update medical history: " + err, "error");
+          }
+        }}
+      >
+        Save
+      </button> 
       <button
         className="CancelBtn"
         onClick={async () => {
@@ -1840,14 +2231,15 @@ const getRegularStatusDisplay = (appt) => {
 
   
   <div className="btnapptadd">
+   {userRole !== "desk" && userRole !== "admin" && (
            <button
   className="AddAppointmentBtn"
   onClick={() => {
     setShowAddChoice(true);
   }}
 >
-  Add Appointment
-</button>
+  New Schedule
+</button> )}
 </div>
 </div>
 </div>
@@ -1859,6 +2251,14 @@ const getRegularStatusDisplay = (appt) => {
       className="appointment-view-modal"
       onClick={(e) => e.stopPropagation()} // prevent closing when clicking inside
     >
+      <button
+    className="viewScheduleBtn"
+    onClick={() => {
+      navigate(`/dashboard/schedule?open=${showViewAppointment.id}`);
+    }}
+  >
+    View Current Schedule
+  </button>
       
       <h2>Appointment Details</h2>
 
@@ -1896,6 +2296,8 @@ const getRegularStatusDisplay = (appt) => {
       <div className="date-header">Date Given</div>
       <div className="date-header">Status</div>
     </div>
+
+
 
     {(() => {
       const isDateAvailable = (scheduledDate) => {
@@ -1966,8 +2368,9 @@ const getRegularStatusDisplay = (appt) => {
         return (
           <>
             {renderRow("D0", "day_zero_date", "day_zero_given_date", "day_zero_status")}
+            {renderRow("D3", "day_three_date", "day_three_given_date", "day_three_status", "day_zero_given_date")}
             {renderRow("D7", "day_seven_date", "day_seven_given_date", "day_seven_status", "day_zero_given_date")}
-            {renderRow("D30", "day_thirty_date", "day_thirty_given_date", "day_thirty_status", "day_seven_given_date")}
+            
           </>
         );
       } else {
@@ -2004,6 +2407,7 @@ const getRegularStatusDisplay = (appt) => {
     })()}
   </div>
 
+ {(userRole === "doctor") && (
 <button
   className="SaveBtn"
   disabled={
@@ -2030,41 +2434,47 @@ const getRegularStatusDisplay = (appt) => {
 
       const appointment = { ...showViewAppointment };
 
-      const sequence =
-        appointment.prophylaxis_type === "Booster"
-          ? [
-              ["day_zero", "day_zero_date"],
-              ["day_seven", "day_seven_date"],
-              ["day_thirty", "day_thirty_date"],
-            ]
-          : [
-              ["day_zero", "day_zero_date"],
-              ["day_three", "day_three_date"],
-              ["day_seven", "day_seven_date"],
-              ["day_fourteen", "day_fourteen_date"],
-              ["day_thirty", "day_thirty_date"],
-            ];
+   /* ---------- 1. build sequence ---------- */
+const rawSeq =
+  appointment.prophylaxis_type === "Booster"
+    ? [
+        ["day_zero", "day_zero_date"],
+        ["day_three", "day_three_date"],
+        ["day_seven", "day_seven_date"],
+      ]
+    : [
+        ["day_zero", "day_zero_date"],
+        ["day_three", "day_three_date"],
+        ["day_seven", "day_seven_date"],
+        ["day_fourteen", "day_fourteen_date"],
+        ["day_thirty", "day_thirty_date"],
+      ];
 
-      // 🔍 Find the first truly pending, unlocked, due dose
-      const nextDue = sequence.find(([prefix, schedKey], idx) => {
-        const givenKey = `${prefix}_given_date`;
-        const statusKey = `${prefix}_status`;
-        const schedDate = appointment[schedKey];
+/* ---------- 2. remove rows whose schedule is null / empty ---------- */
+const sequence = rawSeq.filter(([, schedKey]) => {
+  const d = appointment[schedKey];
+  return d && String(d).trim() !== "";
+});
 
-        const prevPrefix = idx === 0 ? null : sequence[idx - 1][0];
-        const prevStatusKey = prevPrefix ? `${prevPrefix}_status` : null;
-        const prevGivenDone = prevStatusKey
-          ? appointment[prevStatusKey] === "✔️ Done"
-          : true;
+/* ---------- 3. now look for the next pending, due, non-empty dose ---------- */
+const nextDue = sequence.find(([prefix, schedKey], idx) => {
+  const givenKey = `${prefix}_given_date`;
+  const statusKey = `${prefix}_status`;
+  const schedDate = appointment[schedKey];
 
-        const isPending =
-          !appointment[givenKey] ||
-          appointment[statusKey]?.toLowerCase() === "pending" ||
-          appointment[statusKey] === "🟡 Pending";
+  const prevPrefix = idx === 0 ? null : sequence[idx - 1][0];
+  const prevStatusKey = prevPrefix ? `${prevPrefix}_status` : null;
+  const prevGivenDone = prevStatusKey
+    ? appointment[prevStatusKey] === "✔️ Done"
+    : true;
 
-        // ✅ must be pending, previous dose done, and date due (not locked)
-        return isPending && prevGivenDone && isDateAvailable(schedDate);
-      });
+  const isPending =
+    !appointment[givenKey] ||
+    appointment[statusKey]?.toLowerCase() === "pending" ||
+    appointment[statusKey] === "🟡 Pending";
+
+  return isPending && prevGivenDone && isDateAvailable(schedDate);
+});
 
       if (!nextDue) {
         // If all pending doses are still in the future (locked)
@@ -2076,9 +2486,9 @@ const getRegularStatusDisplay = (appt) => {
         });
 
         if (upcoming) {
-          alert("⚠️ The next dose is still locked (scheduled in the future).");
+          toast.show("⚠️ The next dose is still locked (scheduled in the future).","warning");
         } else {
-          alert("No pending dose available to mark as done.");
+          toast.show("No pending dose available to mark as done.","warning");
         }
         return;
       }
@@ -2100,7 +2510,7 @@ const getRegularStatusDisplay = (appt) => {
       appointment.schedule_status = appointment.status;
 
       if (!appointment.id) {
-        alert("Appointment ID missing — cannot update.");
+        toast.show("Appointment ID missing — cannot update.","warning");
         return;
       }
 
@@ -2108,11 +2518,38 @@ const getRegularStatusDisplay = (appt) => {
       await invoke("increment_queue");
 
       if (allDone) {
-        await invoke("status_apointment_update", {
-          id: appointment.id,
-          status: "Finished",
-        });
+  await invoke("status_apointment_update", {
+    id: appointment.id,
+    field: "status",
+    status: "Finished",
+  });
+
+  // 🟦 Show confirmation popup for auto-archiving
+  setConfirmPopup({
+    show: true,
+    message: "The patient has completed all scheduled doses. Would you like to auto-archive this patient now?",
+    onConfirm: async () => {
+      setConfirmPopup({ show: false });
+
+      try {
+        await archivePatient(showView.id);
+        toast.show("Patient archived successfully!","success");
+
+        // refresh lists
+        setShowView(null);
+        if (viewArchived) {
+          loadArchivedPatients();
+        } else {
+          loadPatients();
+        }
+
+      } catch (err) {
+        console.error("Auto-archive failed:", err);
+        toast.show("Failed to auto-archive: " + err, "error");
       }
+    }
+  });
+}
 
       await new Promise((r) => setTimeout(r, 300));
 
@@ -2126,10 +2563,10 @@ const getRegularStatusDisplay = (appt) => {
       if (refreshed) setShowViewAppointment(refreshed);
 
       setIsSavedGivenDates(true);
-      alert(`✅ ${prefix.replace("day_", "Day ")} marked as Done!`);
+      toast.show(`✅ ${prefix.replace("day_", "Day ")} marked as Done!`,"success");
     } catch (err) {
       console.error("Failed to save vaccination dates:", err);
-      alert("❌ Failed to save given dates: " + err);
+      toast.show("❌ Failed to save given dates: " + err,"error");
     }
 
 // Deduct depending on anti-rabies route (IM = 1, ID = 0.1)
@@ -2138,15 +2575,14 @@ try {
   await inventoryManager.reduceByRoute("vaxirab", route);
 } catch (err) {
   console.error("Inventory reduce failed:", err);
-  // optionally alert user:
-  // alert("Failed to update inventory: " + err);
+  
 }
 
 
   }}
 >
   Mark Done
-</button>
+</button> )}
 
 </div>
 
@@ -2165,17 +2601,20 @@ try {
       <span className="info-label">Date Given: {showViewAppointment.tetanus_date || "—"}</span>
       </div>
 
+
       <div className="appointment-buttons">
-        <button className="edit" onClick={() => handleEditAppointment(showViewAppointment)}>Edit</button>
+        {userRole !== "desk" && userRole !== "admin" && (
+        <button className="edit" onClick={() => handleEditAppointment(showViewAppointment)}>Edit</button> )}
         <button className="close" onClick={() => setShowViewAppointment(null)}>Close</button>
+       {userRole !== "desk" && userRole !== "admin" && ( <>
       <button
   className="printBtn"
   onClick={() => {
   const printable = document.getElementById("printableForm");
   if (!printable) {
-    alert("Printable form not found.");
+    toast.show("Printable form not found.","error");
     return;
-  }
+  } 
 
   // ✅ Convert QR canvas to base64 image
   const qrCanvas = printable.querySelector("canvas");
@@ -2266,10 +2705,12 @@ body {
 
 >
  Print Schedule Card
-</button>
+</button> </> )}
+
+{(userRole === "doctor") && (
 <button onClick={() => handleDeleteAppointment(showViewAppointment)}>
   Delete
-</button>
+</button>  )} 
       </div>
     </div>
 
@@ -2356,85 +2797,278 @@ body {
       <div className="regvac">
         <h3>Regular Vaccination Details</h3>
 
-<p><b>Vaccine Type:</b> {viewRegularData.regular_type}</p>
-<p><b>Injection Site:</b> {viewRegularData.injection_site}</p>
+        <p><b>Vaccine Type:</b> {viewRegularData.regular_type}</p>
+        <p><b>Injection Site:</b> {viewRegularData.injection_site}</p>
 
-{/* ------------------------------ */}
-{/* FLU VACCINE                   */}
-{/* ------------------------------ */}
+        
+       {viewRegularData.regular_type === "Anti-Tetanus" && (
+  <>
+    <h3>Anti-Tetanus Details</h3>
+    <hr />
+
+    <div className="details-grid">
+      <p><b>Wound Type:</b> {viewRegularData.wound_type || "—"}</p>
+      <p><b>Main Treatment:</b> Tetanus Toxoid</p>
+      <p><b>Additional Treatment:</b> {viewRegularData.additional_tetanus || "—"}</p>
+
+      <p>
+        <b>HTIG/ATS (D0):</b>{" "}
+        {viewRegularData.regular_date
+          ? viewRegularData.regular_date
+          : "—"}
+      </p>
+
+      <p>
+        <b>HTIG/ATS:</b>{" "}
+        {viewRegularData.regular_status_severe?.includes("Done") ? (
+          <>
+            ✔️ Done
+          </>
+        ) : (
+          "Upcoming"
+        )}
+      </p>
+    </div>
+
+    {/* ---------- SCHEDULE TABLE ---------- */}
+    <h3 className="section-title">
+      Anti-Tetanus Schedule
+    </h3>
+    
+
+    <table className="reg-table">
+      <thead>
+        <tr>
+          <th>Scheduled</th>
+          <th>Given</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        {/* Dose 1 */}
+        <tr>
+          <td>Dose 1: {viewRegularData.regular_date || "—"}</td>
+          <td>
+            <input
+              type="text"
+              value={viewRegularData.regular_given_date || ""}
+              readOnly
+            />
+          </td>
+          <td>
+            {viewRegularData.regular_status?.includes("Done")
+              ? "✔️ Done"
+              : "🔴 Upcoming"}
+          </td>
+        </tr>
+
+        {/* Dose 2 */}
+        {viewRegularData.regular_date2 && (
+          <tr>
+            <td>Dose 2: {viewRegularData.regular_date2}</td>
+            <td>
+              <input
+                type="text"
+                value={viewRegularData.regular_given_date2 || ""}
+                readOnly
+              />
+            </td>
+            <td>
+              {viewRegularData.regular_status2?.includes("Done")
+                ? "✔️ Done"
+                : "🔴 Upcoming"}
+            </td>
+          </tr>
+        )}
+
+        {/* Dose 3 */}
+        {viewRegularData.regular_date3 && (
+          <tr>
+            <td>Dose 3: {viewRegularData.regular_date3}</td>
+            <td>
+              <input
+                type="text"
+                value={viewRegularData.regular_given_date3 || ""}
+                readOnly
+              />
+            </td>
+            <td>
+              {viewRegularData.regular_status3?.includes("Done")
+                ? "✔️ Done"
+                : "🔴 Upcoming"}
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+    {(userRole === "doctor") && (
+    <button
+      className="markDoneButton" disabled={
+    viewRegularData.regular_status === "Missed" ||
+    viewRegularData.regular_status2 === "Missed" ||
+    viewRegularData.regular_status3 === "Missed"
+  }
+      onClick={() => markRegularDone(viewRegularData)}
+    >
+      Mark Done
+    </button> )}
+  </>
+)}
+           
+         
+
+{viewRegularData?.regular_type === "Pneumonia Vaccine" && (
+  <>
+  <p><b>Route:</b> {viewRegularData.regular_route || "IM"}</p>
+    <h3>Pneumonia Vaccine Schedule</h3>
+    <hr className="section-divider" />
+
+    <table className="vax-table">
+      <thead>
+        <tr>
+          <th>Scheduled</th>
+          <th>Vaccine Type</th>
+          <th>Given</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {/* DOSE 1 */}
+        <tr>
+          <td>Dose 1: {viewRegularData.regular_date}</td>
+          <td>{viewRegularData.pneumonia_type}</td>
+
+          <td>
+            <input
+              type="date"
+              value={viewRegularData.regular_given_date || ""}
+              readOnly
+            />
+          </td>
+
+          <td>
+            {viewRegularData.regular_status?.includes("Done") ? (
+              <span className="status-done">✔️ Done</span>
+            ) : (
+              <span className="status-upcoming">🔴 Upcoming</span>
+            )}
+          </td>
+        </tr>
+
+        {/* DOSE 2 */}
+        <tr>
+          <td>Dose 2: {viewRegularData.regular_date2}</td>
+          <td>{viewRegularData.pneumonia_type2}</td>
+
+          <td>
+            <input
+              type="date"
+              value={viewRegularData.regular_given_date2 || ""}
+              readOnly
+            />
+          </td>
+
+          <td>
+            {viewRegularData.regular_status2?.includes("Done") ? (
+              <span className="status-done">✔️ Done</span>
+            ) : (
+              <span className="status-upcoming">🔴 Upcoming</span>
+            )}
+          </td>
+        </tr>
+
+        
+        {viewRegularData.regular_date3 && (
+          <tr>
+            <td>Dose 3: {viewRegularData.regular_date3}</td>
+            <td>{viewRegularData.pneumonia_type2}</td>
+
+            <td>
+              <input
+                type="date"
+                value={viewRegularData.regular_given_date3 || ""}
+                readOnly
+              />
+            </td>
+
+            <td>
+              {viewRegularData.regular_status3?.includes("Done") ? (
+                <span className="status-done">✔️ Done</span>
+              ) : (
+                <span className="status-upcoming">🔴 Upcoming</span>
+              )}
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+    {(userRole === "doctor") && (
+   <button
+      className="markDoneButton" disabled={
+    viewRegularData.regular_status === "Missed" ||
+    viewRegularData.regular_status2 === "Missed" ||
+    viewRegularData.regular_status3 === "Missed"
+  }
+      onClick={() => markRegularDone(viewRegularData)}
+    >
+      Mark Done
+    </button> )}
+  </> 
+)}
+
 {viewRegularData.regular_type === "Flu Vaccine" && (
   <>
-    <p><b>Vaccine Name / Strain:</b> {viewRegularData.vaccine_name}</p>
-    <p>
-      <b>Date Given:</b>{" "}
-{viewRegularData.regular_given_date && viewRegularData.regular_given_date.trim() !== ""
-  ? viewRegularData.regular_given_date
-  : "—"}
-    </p>
+
+    <p><b>Vaccine Name/Strain:</b> {viewRegularData.vaccine_name || "—"}</p>
     <p><b>Route:</b> {viewRegularData.regular_route || "IM"}</p>
+
+    <h3 className="section-title">Flu Vaccine Schedule</h3>
+
+    <table className="dose-table">
+      <thead>
+        <tr>
+          <th>Scheduled</th>
+          <th>Given</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr>
+          <td>Dose 1: {viewRegularData.regular_date || "—"}</td>
+          <td>{viewRegularData.regular_given_date || "—"}</td>
+          <td>{viewRegularData.regular_status || "—"}</td>
+        </tr>
+
+        <tr>
+          <td>Dose 2: {viewRegularData.regular_date2 || "—"}</td>
+          <td>{viewRegularData.regular_given_date2 || "—"}</td>
+          <td>{viewRegularData.regular_status2 || "—"}</td>
+        </tr>
+      </tbody>
+    </table>
+
+ {(userRole === "doctor") && (
+    <button
+      className="markDoneButton" disabled={
+    viewRegularData.regular_status === "Missed" ||
+    viewRegularData.regular_status2 === "Missed" ||
+    viewRegularData.regular_status3 === "Missed"
+  }
+      onClick={() => markRegularDone(viewRegularData)}
+    >
+      Mark Done
+    </button> )}
   </>
 )}
-
-{/* ------------------------------ */}
-{/* PNEUMONIA VACCINE             */}
-{/* ------------------------------ */}
-{viewRegularData.regular_type === "Pneumonia Vaccine" && (
-  <>
-    <p><b>Pneumonia Type:</b> {viewRegularData.pneumonia_type}</p>
-    <p>
-      <b>Date Given:</b>{" "}
-{viewRegularData.regular_given_date && viewRegularData.regular_given_date.trim() !== ""
-  ? viewRegularData.regular_given_date
-  : "—"}
-    </p>
-    <p><b>Route:</b> {viewRegularData.regular_route || "IM"}</p>
-  </>
-)}
-
-{/* ------------------------------ */}
-{/* TETANUS TOXOID                */}
-{/* ------------------------------ */}
-{viewRegularData.regular_type === "Anti-Tetanus" && (
-  <>
-  <p>
-      <b>Route:</b> {viewRegularData.regular_route?.trim() || "IM "}
-
-      <b> Anti-Tetanus Type:</b> {viewRegularData.vaccine_name || "—"}
-    </p>
-    <p>
  
-      <b> Date Given:</b>{" "}
-      {viewRegularData.regular_given_date?.trim()
-        ? viewRegularData.regular_given_date
-        : "—"}
-    </p>
+       
 
-  </>
-)}
-
-
-{/* ------------------------------ */}
-{/* SINGLE-DOSE DEFAULT HANDLING  */}
-{/* (covers any vaccine except Hep B) */}
-{/* ------------------------------ */}
-{viewRegularData.regular_type !== "Hepa B Vaccine" &&
- !["Flu Vaccine", "Pneumonia Vaccine", "Anti-Tetanus"].includes(viewRegularData.regular_type) && (
-  <>
-    <p>
-      <b>Date Given:</b>{" "}
-{viewRegularData.regular_given_date && viewRegularData.regular_given_date.trim() !== ""
-  ? viewRegularData.regular_given_date
-  : "—"}
-    </p>
-    <p><b>Route:</b> {viewRegularData.regular_route || "IM"}</p>
-  </>
-)}
-
-
-
-{/* ------------------------------ */}
 {/* HEPATITIS B (3 DOSES)         */}
-{/* ------------------------------ */}
+
 <div className="hepvaccont">
 {viewRegularData.regular_type === "Hepa B Vaccine" && (
   <>
@@ -2497,7 +3131,7 @@ body {
         );
       })()}
     </div>
-    
+     {(userRole === "doctor") && (
     <button
   className="SaveBtn"
   disabled={
@@ -2508,7 +3142,7 @@ body {
   onClick={() => markRegularDone(viewRegularData)}
 >
   Mark Done
-</button>
+</button> )}
 
   
 </>
@@ -2518,12 +3152,13 @@ body {
         </div>
 {/* BUTTONS ALWAYS SHOWN */}
 <div className="regbtns">
+  {(userRole === "doctor") && (
   <button 
     className="edit"
     onClick={() => handleEditRegular(viewRegularData)}
   >
     Edit
-  </button>
+  </button> )}
 
   <button 
     className="CancelBtn"
@@ -2535,29 +3170,30 @@ body {
     Close
   </button>
 
+ {(userRole === "doctor") && (
   <button
   className="printBtn"
   onClick={() => {
     const printable = document.getElementById("printableFormRegular");
     if (!printable) {
-      alert("Printable form not found.");
+      toast.show("Printable form not found.","error");
       return;
     }
 
-    // Convert QR to image
+    
     const qrCanvas = printable.querySelector("canvas");
     let qrImage = "";
     if (qrCanvas) {
       qrImage = `<img src="${qrCanvas.toDataURL("image/png")}" width="64" height="64" />`;
     }
 
-    // Replace canvas with img in print HTML
+    
     let printContents = printable.innerHTML;
     if (qrImage) {
       printContents = printContents.replace(/<canvas[^>]*><\/canvas>/, qrImage);
     }
 
-    // Create print iframe
+    
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";
     iframe.style.right = "0";
@@ -2647,9 +3283,10 @@ body {
   }}
 >
   Print Schedule Card
-</button>
+</button> )}
 
-  <button onClick={handleDeleteAppointment}>Delete</button>
+{(userRole === "doctor") && (
+  <button onClick={handleDeleteAppointment}>Delete</button> )}
 
  
 
@@ -2681,41 +3318,102 @@ body {
           </tr>
         </thead>
 
-       <tbody>
+        <tbody>
 
-  {/* 🔹 SINGLE-DOSE REGULAR VACCINES */}
-  {viewRegularData.regular_type !== "Hepa B Vaccine" && (
+
+{viewRegularData.regular_type === "Anti-Tetanus" && (
+  <>
+
+    {/* Normal Dose Schedule */}
     <tr>
-      <td><b>Scheduled:</b> {viewRegularData.regular_date}</td>
-      <td><b>Given:</b> {viewRegularData.regular_given_date || "—"}</td>
+      <td><b>1st Dose:</b> {viewRegularData.regular_date || "—"}</td>
+      <td>{viewRegularData.regular_given_date || "—"}</td>
       <td></td>
     </tr>
-  )}
 
-  {/* 🔹 HEPATITIS B – 3-DOSE TABLE */}
-  {viewRegularData.regular_type === "Hepa B Vaccine" && (
-    <>
+    {viewRegularData.regular_date2 && (
       <tr>
-        <td><b>1st Dose:</b> {viewRegularData.hepa_b_dose1}</td>
-        <td>{viewRegularData.hepa_b_given1 || "—"}</td>
+        <td><b>2nd Dose:</b> {viewRegularData.regular_date2}</td>
+        <td>{viewRegularData.regular_given_date2 || "—"}</td>
         <td></td>
       </tr>
+    )}
 
+    {viewRegularData.regular_date3 && (
       <tr>
-        <td><b>2nd Dose:</b> {viewRegularData.hepa_b_dose2}</td>
-        <td>{viewRegularData.hepa_b_given2 || "—"}</td>
+        <td><b>3rd Dose:</b> {viewRegularData.regular_date3}</td>
+        <td>{viewRegularData.regular_given_date3 || "—"}</td>
         <td></td>
       </tr>
+    )}
 
+    {/* Severe-only rows */}
+    {viewRegularData.wound_type === "Severe" && (
+      <>
+
+        <tr>
+          <td><b>Additional Treatment:</b> {viewRegularData.additional_tetanus || "—"}</td>
+          <td>{viewRegularData.regular_given_severe || "—"}</td>
+          <td></td>
+        </tr>
+      </>
+    )}
+
+  </>
+)}
+
+
+
+{["Flu Vaccine"].includes(viewRegularData.regular_type) && (
+  <>
+    <tr>
+      <td><b>1st Dose:</b> {viewRegularData.regular_date || "—"}</td>
+      <td>{viewRegularData.regular_given_date || "—"}</td>
+      <td></td>
+    </tr>
+
+    {viewRegularData.regular_date2 && (
       <tr>
-        <td><b>3rd Dose:</b> {viewRegularData.hepa_b_dose3}</td>
-        <td>{viewRegularData.hepa_b_given3 || "—"}</td>
+        <td><b>2nd Dose:</b> {viewRegularData.regular_date2}</td>
+        <td>{viewRegularData.regular_given_date2 || "—"}</td>
         <td></td>
       </tr>
-    </>
-  )}
+    )}
 
-</tbody>
+    {viewRegularData.regular_date3 && (
+      <tr>
+        <td><b>3rd Dose:</b> {viewRegularData.regular_date3}</td>
+        <td>{viewRegularData.regular_given_date3 || "—"}</td>
+        <td></td>
+      </tr>
+    )}
+  </>
+)}
+
+
+{viewRegularData.regular_type === "Hepa B Vaccine" && (
+  <>
+    <tr>
+      <td><b>1st Dose:</b> {viewRegularData.hepa_b_dose1}</td>
+      <td>{viewRegularData.hepa_b_given1 || "—"}</td>
+      <td></td>
+    </tr>
+
+    <tr>
+      <td><b>2nd Dose:</b> {viewRegularData.hepa_b_dose2}</td>
+      <td>{viewRegularData.hepa_b_given2 || "—"}</td>
+      <td></td>
+    </tr>
+
+    <tr>
+      <td><b>3rd Dose:</b> {viewRegularData.hepa_b_dose3}</td>
+      <td>{viewRegularData.hepa_b_given3 || "—"}</td>
+      <td></td>
+    </tr>
+  </>
+)}
+
+        </tbody>
       </table>
 
       <div className="qr-section">
@@ -2734,6 +3432,7 @@ body {
     </div>
   )}
 </div>
+
 
 
 
@@ -2821,7 +3520,7 @@ body {
       setAppointments(appts);
     } catch (err) {
       console.error("Failed to load patient:", err);
-      alert("Failed to load patient details.");
+      toast.show("Failed to load patient details.",error);
     }
   }}
 >
@@ -2831,12 +3530,20 @@ body {
  {!viewArchived ? (
     <button
   onClick={async () => {
-    if (window.confirm(`Archive ${p.first_name} ${p.last_name}?`)) {
-      await archivePatient(p.id);
-      alert("Archived successfully!");
-      if (viewArchived) loadArchivedPatients();
-      else loadPatients();
-        }
+   setConfirmPopup({
+  show: true,
+  message: `Archive ${p.first_name} ${p.last_name}?`,
+  onConfirm: async () => {
+    setConfirmPopup({ show: false });
+
+    await archivePatient(p.id);
+    toast.show("Archived successfully!", "success");
+
+    if (viewArchived) loadArchivedPatients();
+    else loadPatients();
+  }
+});
+
       }}
     >
       Archive
@@ -2844,11 +3551,19 @@ body {
   ) : (
    <button
   onClick={async () => {
-    if (window.confirm(`Restore ${p.first_name} ${p.last_name}?`)) {
-      await restorePatient(p.id);
-      alert("Restored successfully!");
-      loadArchivedPatients(); // reload the archive view
-        }
+    setConfirmPopup({
+  show: true,
+  message: `Restore ${p.first_name} ${p.last_name}?`,
+  onConfirm: async () => {
+    setConfirmPopup({ show: false });
+
+    await restorePatient(p.id);
+    toast.show("Restored successfully!", "success");
+
+    loadArchivedPatients();
+  }
+});
+
       }}
     >
       Restore
@@ -2865,7 +3580,7 @@ body {
   <div className="popup">
     <div className="choice-box">
       <div className="choicecontainer">
-        <h3>Select Appointment Type</h3>
+        <h3>Select Vaccination Type</h3>
         <div className="choice-buttons">
           <button
             onClick={() => {
@@ -2947,30 +3662,100 @@ onClick={() => {
         {/* Tetanus Route Input */}
 {newRegularType === "Anti-Tetanus" && (
   <div className="input-row">
-    <label>Anti-Tetanus Type:</label>
-    <select value={newRegularName} onChange={(e) => setNewRegularName(e.target.value)} required>
-  <option value="" disabled hidden>Select Anti-Tetanus Type</option>
-  <option value="Tetanus Toxoid">Tetanus Toxoid</option>
-  <option value="HTIG">HTIG</option>
-  <option value="ATS">ATS</option>
-</select>
-    <p><b>Route:</b> IM</p>
-     <label>Injection Site:</label>
 
-  <select
-    value={newInjectionSite}
-    onChange={(e) => setNewInjectionSite(e.target.value)}required
-  >
-    <option value="" disabled hidden>Select site</option>
-    <option value="Left Arm">Left Arm</option>
-    <option value="Right Arm">Right Arm</option>
-    <option value="Left Thigh">Left Thigh</option>
-    <option value="Right Thigh">Right Thigh</option>
-    <option value="Deltoid">Deltoid</option>
-    <option value="Gluteal">Gluteal</option>
-  </select>
+    {/* WOUND TYPE */}
+    <label>Wound Type:</label>
+    <select
+      value={woundType}
+      onChange={(e) => {
+        setWoundType(e.target.value);
+        if (e.target.value === "Standard") setSevereType(""); // reset severe vaccine
+      }}
+      required
+    >
+      <option value="" hidden>Select Wound Type</option>
+      <option value="Standard">Standard Wound</option>
+      <option value="Severe">Severe Wound</option>
+    </select>
+
+    {/* ALWAYS SHOW TETANUS TOXOID */}
+    <label>Main Anti-Tetanus Type:</label>
+    <select
+      value={newRegularName}
+      onChange={(e) => setNewRegularName(e.target.value)}
+      required
+    >
+      <option value="Tetanus Toxoid">Tetanus Toxoid</option>
+    </select>
+
+    {/* SEVERE ONLY → HTIG or ATS */}
+    {woundType === "Severe" && (
+      <>
+        <label>Additional Treatment (Severe Only):</label>
+        <select
+          value={severeType}
+          onChange={(e) => setSevereType(e.target.value)}
+          required
+        >
+          <option value="" hidden>Select Treatment</option>
+          <option value="HTIG">HTIG</option>
+          <option value="ATS">ATS</option>
+        </select>
+      </>
+    )}
+
+    <p><b>Route:</b> IM</p>
+
+    <label>Injection Site:</label>
+    <select
+      value={newInjectionSite}
+      onChange={(e) => setNewInjectionSite(e.target.value)}
+      required
+    >
+      <option value="" hidden>Select site</option>
+      <option value="Left Arm">Left Arm</option>
+      <option value="Right Arm">Right Arm</option>
+      <option value="Left Thigh">Left Thigh</option>
+      <option value="Right Thigh">Right Thigh</option>
+      <option value="Deltoid">Deltoid</option>
+      <option value="Gluteal">Gluteal</option>
+    </select>
+
+    {/* SEVERE WOUND DOSE INPUT (HTIG/ATS) */}
+{woundType === "Severe" && severeType && (
+  <div className="input-row severe-dose-block" style={{ marginTop: "10px" }}>
+    <label>{severeType} – Administration Date (D0):</label>
+
+    <input
+      type="date"
+      value={regularGivenSevere}
+      onChange={(e) => setRegularGivenSevere(e.target.value)}
+      required
+    />
+
+    <label>Status:</label>
+    <select
+      value={regularStatusSevere}
+      onChange={(e) => setRegularStatusSevere(e.target.value)}
+    >
+      <option value="Pending">Pending</option>
+      <option value="✔️ Done">✔️ Done</option>
+    </select>
   </div>
 )}
+   
+
+    {/* FIXED: Auto-schedule now inside same block */}
+    {newRegularDate && (
+      <div className="auto-schedule" style={{ marginTop: "10px" }}>
+        <p><b>D0:</b> {newRegularDate}</p>
+        <p><b>D30:</b> {newRegularDate2}</p>
+        <p><b>6 Months:</b> {newRegularDate3}</p>
+      </div>
+    )}
+  </div>
+)}
+
 
         {/* Flu Vaccine */}
         {newRegularType === "Flu Vaccine" && (
@@ -2996,61 +3781,105 @@ onClick={() => {
     <option value="Deltoid">Deltoid</option>
     <option value="Gluteal">Gluteal</option>
   </select>
+  <div className="input-row">
+  <label>Flu Schedule</label>
+  <select
+    value={fluSched}
+    onChange={(e) => setFluSched(e.target.value)}
+    required
+  >
+    <option value="" hidden>Select Schedule</option>
+    <option value="D0-D30">D0 and D30</option>
+    <option value="D0-1YR">D0 and 1 Year</option>
+  </select>
+</div>
+
+{newRegularDate && fluSched && (
+  <div className="auto-schedule">
+    <p><b>D0:</b> {newRegularDate}</p>
+    <p><b>Next Dose:</b> {newRegularDate2}</p>
+  </div>
+)}
           </div>
         )}
 
-        {/* Pneumonia Vaccine */}
-        {newRegularType === "Pneumonia Vaccine" && (
-          <div className="input-row">
-            <label>Vaccine Type</label>
-            <select
-              value={newPneumoniaType}
-              onChange={(e) => setNewPneumoniaType(e.target.value)}
-              required
-            >
-              <option value="" disabled hidden>Select Type</option>
-              <option value="PCV13">PCV13</option>
-              <option value="PPSV23">PPSV23</option>
-            </select>
-           
-           <p><b>Route:</b> IM</p>
-           <label>Injection Site:</label>
-  <select
-    value={newInjectionSite}
-    onChange={(e) => setNewInjectionSite(e.target.value)}required
-  >
-    <option value="" disabled hidden>Select site</option>
-    <option value="Left Arm">Left Arm</option>
-    <option value="Right Arm">Right Arm</option>
-    <option value="Left Thigh">Left Thigh</option>
-    <option value="Right Thigh">Right Thigh</option>
-    <option value="Deltoid">Deltoid</option>
-    <option value="Gluteal">Gluteal</option>
-  </select>
+     {newRegularType === "Pneumonia Vaccine" && (
+  <div className="input-row">
+
+    {/* ------------------------------- */}
+    {/* MAIN PNEUMONIA TYPE (DOSE 1)   */}
+    {/* ------------------------------- */}
+    <label>Vaccine Type</label>
+    <select
+      value={newPneumoniaType}
+      onChange={(e) => {
+        const val = e.target.value;
+        setNewPneumoniaType(val);
+
+        // 🔥 AUTO-SET DOSE 2 VACCINE TYPE (opposite rule)
+        if (val === "PCV13") {
+          setPneumoniaDose2Type("PPSV23");
+        } else if (val === "PPSV23") {
+          setPneumoniaDose2Type("PCV13");
+        }
+      }}
+      required
+    >
+      <option value="" disabled hidden>Select Type</option>
+      <option value="PCV13">PCV13</option>
+      <option value="PPSV23">PPSV23</option>
+    </select>
+
+    <p><b>Route:</b> IM</p>
+
+    {/* ------------------------------- */}
+    {/* INJECTION SITE                  */}
+    {/* ------------------------------- */}
+    <label>Injection Site:</label>
+    <select
+      value={newInjectionSite}
+      onChange={(e) => setNewInjectionSite(e.target.value)}
+      required
+    >
+      <option value="" disabled hidden>Select site</option>
+      <option value="Left Arm">Left Arm</option>
+      <option value="Right Arm">Right Arm</option>
+      <option value="Left Thigh">Left Thigh</option>
+      <option value="Right Thigh">Right Thigh</option>
+      <option value="Deltoid">Deltoid</option>
+      <option value="Gluteal">Gluteal</option>
+    </select>
+
+    {/* ------------------------------- */}
+    {/* PNEUMONIA SCHEDULE TYPE        */}
+    {/* ------------------------------- */}
+    <div className="input-row">
+      <label>Pneumonia Schedule</label>
+      <select
+        value={pneumoSched}
+        onChange={(e) => setPneumoSched(e.target.value)}
+        required
+      >
+        <option value="" hidden>Select Schedule</option>
+        <option value="D0-1YR">D0 + 1 Year</option>
+        <option value="D0-8WKS-1YR">D0 + 8 Weeks + 1 Year</option>
+      </select>
+    </div>
+
+
+{newRegularDate && pneumoSched && (
+  <div className="auto-schedule">
+    <p><b>Dose 1:</b> {newRegularDate}</p>
+    <p><b>Dose 2</b> {newRegularDate2}</p>
+    {newRegularDate3 && <p><b>Dose 3:</b> {newRegularDate3}</p>}
+  </div>
+)}
           </div>
         )}
 
         {/* Hepa B Vaccine — Auto-Dose Generator */}
         {newRegularType === "Hepa B Vaccine" && (
   <div className="input-row">
-    <label>Date of First Dose</label>
-
-    <input
-      type="date"
-      value={newRegularDate}
-      onChange={(e) => {
-        const selected = e.target.value;
-        setNewRegularDate(selected);
-
-        const d = new Date(selected);
-        setDoseDates([
-          { label: "1st Dose", date: selected },
-          { label: "2nd Dose (1 month later)", date: addMonths(d, 1) },
-          { label: "3rd Dose (6 months later)", date: addMonths(d, 6) },
-        ]);
-      }}
-      required
-    />
 
     {doseDates.length > 0 && (
       <div className="auto-schedule" style={{ marginTop: "10px" }}>
@@ -3079,19 +3908,6 @@ onClick={() => {
   </div>
 )}
 
-
-        {/* Date Given — applies to all EXCEPT Hepa B */}
-       {newRegularType !== "Hepa B Vaccine" && (
-  <div className="input-row">
-    <label>Date Given</label>
-    <input
-      type="date"
-      value={newRegularGivenDate}
-      onChange={(e) => setNewRegularGivenDate(e.target.value)}
-      required
-    />
-  </div>
-)}
  {/* Buttons */}
         <div className="regbtns">
           <button type="submit" className="SubmitBtn">Save</button>
@@ -3119,7 +3935,7 @@ onClick={() => {
   <div className="popup">
     <form className="appointmentForm" onSubmit={handleSaveAppointment}>
       <div className="containerapptNew">
-      <h3>{editAppointment ? "Edit Appointment" : "Add Appointment"}</h3>
+      <h3>{editAppointment ? "Edit Appointment" : "Anti-Rabies Schedule"}</h3>
 
         {/* Exposure info */}
         <div className="input-row">
@@ -3132,11 +3948,45 @@ onClick={() => {
   value={newDateOfExposure}
   onChange={(e) => setNewDateOfExposure(e.target.value)}
   max={getTodayDate()}   // 🔥 limit to today or earlier
-  required
+  
 />
 
 
-          <select value={newTypeofBite} onChange={(e) => setNewTypeofBite(e.target.value)} required>
+          <select
+  value={newTypeofBite}
+  onChange={(e) => {
+    const bite = e.target.value;
+    setNewTypeofBite(bite);
+
+    // AUTO-ASSIGN CATEGORY + RIG
+    if (bite === "Abrasion" || bite === "Minor Scratches") {
+      setNewCategory("II");
+      setNewRIG(false);     // Category II → No RIG
+      setNewRIGDate("");    // Clear date
+    } 
+    else if (
+      bite === "Laceration" || 
+      bite === "Puncture" || 
+      bite === "Crush Injuries"
+    ) {
+      setNewCategory("III");
+      setNewRIG(true);      // Category III → Auto-check RIG
+
+      // Auto-fill today's date for RIG
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      setNewRIGDate(`${yyyy}-${mm}-${dd}`);
+    } 
+    else {
+      setNewCategory("None");
+      setNewRIG(false);      // No RIG
+      setNewRIGDate("");
+    }
+  }}
+  required
+>
             <option value="" disabled hidden>Type of Bite</option>
             <option value="None">None</option>
             <option value="Laceration">Laceration</option>
@@ -3168,15 +4018,14 @@ onClick={() => {
             <option value="Raccoon">Raccoon</option>
             <option value="Fox">Fox</option>
             <option value="Skunk">Skunk</option>
-            <option value="Rodent">Rodent</option>
             <option value="Monkey">Monkey</option>
             <option value="Cattle">Cattle</option>
+            <option value="Seal">Seal</option>
           </select>
 
           <select value={newCategory} onChange={(e) => setNewCategory(e.target.value)} required>
             <option value="" disabled hidden>Category</option>
             <option value="None">None</option>
-            <option value="I">I</option>
             <option value="II">II</option>
             <option value="III">III</option>
           </select>
@@ -3194,6 +4043,7 @@ onClick={() => {
           </select>
         </div>
 
+          
         {/* Buttons */}
         <div className="apptbtns">
           <button type="submit" className="SubmitBtn">Save</button>
@@ -3224,6 +4074,10 @@ onClick={() => {
           </button>
         </div>
                 <div className="form-group">
+                  <AppointmentPresets 
+    applyPreset={applyPreset}
+    prophylaxisType={selectedProphylaxisType}
+/>
   <label><b>Prophylaxis Type:</b></label>
   <div className="radio-group">
     <label>
@@ -3290,12 +4144,13 @@ onChange={(e) => {
 
   // ONLY set D0, D7, D30 for Booster
   setDayZero(todayStr);
+   setDayThirty(addDays(todayStr, 3));
   setDaySeven(addDays(todayStr, 7));
-  setDayThirty(addDays(todayStr, 30));
+ 
 
   // Explicitly clear D3 / D14 to avoid leftover values
-  setDayThree("");
   setDayFourteen("");
+  setDayThirty("");
 }}
 
   />
@@ -3327,10 +4182,24 @@ onChange={(e) => {
   <div className="auto-schedule">
     <h4>Auto-Generated Schedule</h4>
     <p><b>Day 0:</b> {dayZero}</p>
+    <p><b>Day 3:</b> {dayThree}</p>
     <p><b>Day 7:</b> {daySeven}</p>
-    <p><b>Day 30:</b> {dayThirty}</p>
   </div>
 )}
+<div className="vaccRouteSection">
+  <h4>Vaccine Route</h4>
+  <div className="input-row">
+    <label>Route:</label>
+    <select
+      value={newVaccRoute}
+      onChange={(e) => setNewVaccRoute(e.target.value)}
+    >
+      <option value="" disabled hidden>Select Route</option>
+      <option value="IM">IM (Intramuscular)</option>
+      <option value="ID">ID (Intradermal)</option>
+    </select>
+  </div>
+</div>
 <div className="tetanusSection">
   <h4>Tetanus Immunization</h4>
 
@@ -3398,7 +4267,7 @@ onChange={(e) => {
         checked={newRIG || false}
         onChange={(e) => setNewRIG(e.target.checked)}
       />
-      RIG Given
+      RIG
     </label>
   </div>
 
@@ -3414,26 +4283,19 @@ onChange={(e) => {
   )}
 </div>
 
-<div className="vaccRouteSection">
-  <h4>Vaccine Route</h4>
-  <div className="input-row">
-    <label>Route:</label>
-    <select
-      value={newVaccRoute}
-      onChange={(e) => setNewVaccRoute(e.target.value)}
-    >
-      <option value="" disabled hidden>Select Route</option>
-      <option value="IM">IM (Intramuscular)</option>
-      <option value="ID">ID (Intradermal)</option>
-    </select>
-  </div>
-</div>
+
       </div>
     </form>
   </div>
 )}
 
-
+{confirmPopup.show && (
+  <ConfirmPopup
+    message={confirmPopup.message}
+    onConfirm={confirmPopup.onConfirm}
+    onCancel={() => setConfirmPopup({ show: false })}
+  />
+)}
 </div></div></div>
 )}
 export default Patient;

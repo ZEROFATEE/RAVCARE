@@ -16,14 +16,12 @@
     use tauri::Emitter;
     use reqwest::Client;
     mod database;
-    pub const DB_PATH: &str = r".\data\ravcare.db";
-
+    use database::{init_db, init_musers_table, get_all_patients, get_archived_patients, Patient};
     use crate::database::{
     delete_user, toggle_user_status, reactivate_user, get_unverified_users_db,
     approve_user, deny_user, update_user_db,  }; //added code here 
-    
-    use database::{init_db, init_musers_table, get_all_patients, get_archived_patients, Patient};
 
+    pub const DB_PATH: &str = r".\data\ravcare.db";
     // ==================== APP STATE ====================
 
     struct AppState {
@@ -77,7 +75,6 @@
 
     // ==================== USER SYSTEM ====================
 
-    
    #[derive(Debug, Serialize, Deserialize, Clone)]
 struct User {
     id: i64,
@@ -192,11 +189,12 @@ fn login_user(
 }
 
 
+
     // ==================== INVENTORY ====================
 
     #[derive(Debug, Serialize, Deserialize, Clone)]
     struct InventoryItem {
-        id: String,       // vaxirab, pcv13, etc.
+        id: Option<String>,     // vaxirab, pcv13, etc.
         name: String,     // Vaxirab N
         amount: f64,      // allows decimals for ID doses
         last_edited: String,
@@ -213,7 +211,7 @@ fn login_user(
         let rows = stmt
             .query_map([], |row| {
                 Ok(InventoryItem {
-                    id: row.get(0)?,
+                    id: row.get(0).ok(),
                     name: row.get(1)?,
                     amount: row.get(2)?,
                     last_edited: row.get(3)?,
@@ -259,13 +257,14 @@ fn login_user(
 
         // atomic transaction
         let tx = conn.transaction().map_err(|e| e.to_string())?;
-
-        tx.execute(
-            "UPDATE inventory
-            SET amount = amount + ?, last_edited = datetime('now')
-            WHERE id = ?",
-            params![delta, id],
-        )
+tx.execute(
+    "INSERT INTO inventory (id, name, amount, last_edited)
+     VALUES (?1, ?1, ?2, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET
+         amount = amount + ?2,
+         last_edited = datetime('now')",
+    params![id, delta],
+)
         .map_err(|e| e.to_string())?;
 
         tx.commit().map_err(|e| e.to_string())?;
@@ -353,33 +352,30 @@ fn login_user(
         let conn = state.db.lock().unwrap();
 
         conn.execute(
-            "INSERT INTO inventory_logs (timestamp, action, vaccine, amount, user)
-            VALUES (datetime('now','localtime'), ?, ?, ?, ?)",
-            params![action, vaccine, amount, user],
+      "INSERT INTO inventory_logs (timestamp, action, vaccine, amount, user)
+     VALUES (datetime('now'), ?1, ?2, ?3, ?4)",
+    rusqlite::params![action, vaccine, amount, user], 
         )
         .map_err(|e| e.to_string())?;
 
         Ok("Log added".into())
     }
 
-    // ==================== VACCINE FETCH ====================
-    #[tauri::command]
-    fn get_inventory_amount(state: tauri::State<AppState>, id: String) -> Result<f64, String> {
-        let conn = state.db.lock().map_err(|_| "DB lock poisoned".to_string())?;
+// ==================== VACCINE FETCH ====================
+#[tauri::command]
+fn get_inventory_amount(state: tauri::State<AppState>, id: String) -> Result<f64, String> {
+    let conn = state.db.lock().map_err(|_| "DB lock poisoned".to_string())?;
 
-        let amount: f64 = conn
-            .query_row(
-                "SELECT amount FROM inventory WHERE id = ?",
-                rusqlite::params![id],
-                |row| row.get(0),
-            )
-            .unwrap_or(0.0);
+    let amount: f64 = conn
+        .query_row(
+            "SELECT amount FROM inventory WHERE id = ?",
+            rusqlite::params![id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0.0);
 
-        Ok(amount)
-    }
-
-    
-
+    Ok(amount)
+}
 
     // ==================== VACCINES ====================
 
@@ -723,7 +719,6 @@ pub async fn sync_all_musers_to_supabase() -> Result<String, String> {
 
 
 
-
     #[tauri::command]
     fn get_patients_cmd() -> Result<Vec<Patient>, String> {
         get_all_patients().map_err(|e| e.to_string())
@@ -820,608 +815,527 @@ pub async fn sync_all_musers_to_supabase() -> Result<String, String> {
     }
 
 
-   // ==================== APPOINTMENTS ====================
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-struct Appointment {
-    pub id: Option<i32>,
-    pub patient_id: i32,
-      // Regular vaccines
-    pub regular_type: Option<String>,
-    pub regular_date: Option<String>,
-    pub regular_date2: Option<String>,
-    pub regular_date3: Option<String>,
-
-    pub regular_route: Option<String>,
-    pub vaccine_name: Option<String>,
-    pub pneumonia_type: Option<String>,
-    pub injection_site: Option<String>,
-
-    // Hepa B doses
-    pub hepa_b_dose1: Option<String>,
-    pub hepa_b_dose2: Option<String>,
-    pub hepa_b_dose3: Option<String>,
-    pub regular_status: Option<String>,
-    pub regular_status2: Option<String>,
-    pub regular_status3: Option<String>,
-    
-    //Statuses
-    pub hepa_b_status1: Option<String>,
-    pub hepa_b_status2: Option<String>,
-    pub hepa_b_status3: Option<String>,
-
-    pub regular_given_date: Option<String>,
-    pub regular_given_date2: Option<String>,
-    pub regular_given_date3: Option<String>,
-
-    // Hepa B given dates
-    pub hepa_b_given1: Option<String>,
-    pub hepa_b_given2: Option<String>,
-    pub hepa_b_given3: Option<String>,
-
-    pub schedule: String,
-    pub date_of_exposure: Option<String>,
-    pub type_of_bite: Option<String>,
-    pub site_of_bite: Option<String>,
-    pub biting_animal: Option<String>,
-    pub category: Option<String>,
-    pub previous_vaccine: Option<String>,
-    pub prophylaxis_type: Option<String>,
-    pub vaccroute: Option<String>,
-    pub tetanus_toxoid: Option<bool>,
-    pub tetanus_route: Option<String>,
-    pub tetanus_date: Option<String>,
-    pub rig: Option<bool>,
-    pub rig_date: Option<String>,
-    pub day_zero_date: Option<String>,
-    pub day_three_date: Option<String>,
-    pub day_seven_date: Option<String>,
-    pub day_fourteen_date: Option<String>,
-    pub day_thirty_date: Option<String>,
-    pub day_zero_given_date: Option<String>,
-    pub day_three_given_date: Option<String>,
-    pub day_seven_given_date: Option<String>,
-    pub day_fourteen_given_date: Option<String>,
-    pub day_thirty_given_date: Option<String>,
-    pub status: Option<String>,
-    pub schedule_status: Option<String>,
-    pub day_zero_status: Option<String>,        // ✅ Added
-    pub day_three_status: Option<String>,
-    pub day_seven_status: Option<String>,
-    pub day_fourteen_status: Option<String>,
-    pub day_thirty_status: Option<String>,
-    pub wound_type: Option<String>,
-    pub additional_tetanus: Option<String>,
-    pub regular_given_severe: Option<String>,
-    pub regular_status_severe: Option<String>,
-
-}
-
-fn init_appointments_table(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS appointments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            patient_id INTEGER NOT NULL,
-
-            regular_type TEXT,
-            regular_date TEXT,
-            regular_date2 TEXT,
-            regular_date3 TEXT,
-
-            regular_route TEXT,
-            vaccine_name TEXT,
-            pneumonia_type TEXT,
-            injection_site TEXT,
-
-            hepa_b_dose1 TEXT,
-            hepa_b_dose2 TEXT,
-            hepa_b_dose3 TEXT,
-
-            regular_status TEXT,
-            regular_status2 TEXT,
-            regular_status3 TEXT,
-
-            hepa_b_status1 TEXT,
-            hepa_b_status2 TEXT,
-            hepa_b_status3 TEXT,
-            
-            regular_given_date TEXT,
-            regular_given_date2 TEXT,
-            regular_given_date3 TEXT,
-
-            hepa_b_given1 TEXT,
-            hepa_b_given2 TEXT,
-            hepa_b_given3 TEXT,
-
-            schedule TEXT NOT NULL,
-            date_of_exposure TEXT,  
-            type_of_bite TEXT,
-            site_of_bite TEXT,
-            biting_animal TEXT,
-            category TEXT,
-            previous_vaccine TEXT,
-            prophylaxis_type TEXT,
-            vaccroute TEXT, 
-            tetanus_toxoid BOOLEAN,
-            tetanus_route TEXT,
-            tetanus_date TEXT,
-            rig BOOLEAN DEFAULT 0,
-            rig_date TEXT,
-            day_zero_date TEXT,
-            day_three_date TEXT,
-            day_seven_date TEXT,
-            day_fourteen_date TEXT,
-            day_thirty_date TEXT,
-            day_zero_given_date TEXT,
-            day_three_given_date TEXT,
-            day_seven_given_date TEXT,
-            day_fourteen_given_date TEXT,
-            day_thirty_given_date TEXT,
-            schedule_status TEXT DEFAULT 'Pending',
-            day_zero_status TEXT DEFAULT 'Pending',        -- ✅ Added
-            day_three_status TEXT DEFAULT 'Pending',
-            day_seven_status TEXT DEFAULT 'Pending',
-            day_fourteen_status TEXT DEFAULT 'Pending',
-            day_thirty_status TEXT DEFAULT 'Pending',
-            status TEXT DEFAULT 'Pending',
-            wound_type TEXT,
-            additional_tetanus TEXT,
-            regular_given_severe TEXT,
-            regular_status_severe TEXT DEFAULT 'Pending',
-            FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE
-        )",
-        [],
-    )?;
-    Ok(())
-}
-
-#[tauri::command]
-fn get_appointments(state: State<'_, AppState>, patient_id: i32) -> Result<Vec<Appointment>, String> {
-    let conn = state.db.lock().unwrap();
-    let mut stmt = conn.prepare(
-        "SELECT 
-    id, patient_id,
-
-    regular_type, regular_date, regular_date2, regular_date3, regular_route, vaccine_name, pneumonia_type, injection_site,
-
-    hepa_b_dose1, hepa_b_dose2, hepa_b_dose3,
-
-    regular_status,regular_status2, regular_status3, hepa_b_status1, hepa_b_status2, hepa_b_status3,
-
-    regular_given_date,regular_given_date2,regular_given_date3, hepa_b_given1, hepa_b_given2, hepa_b_given3,
-
-    schedule, date_of_exposure, type_of_bite, site_of_bite, biting_animal,
-    category, previous_vaccine, prophylaxis_type, vaccroute, tetanus_toxoid,
-    tetanus_route, tetanus_date, rig, rig_date,
-
-    day_zero_date, day_three_date, day_seven_date,
-    day_fourteen_date, day_thirty_date,
-
-    day_zero_given_date, day_three_given_date, day_seven_given_date,
-    day_fourteen_given_date, day_thirty_given_date,
-    schedule_status, day_zero_status, day_three_status,
-    day_seven_status, day_fourteen_status, day_thirty_status, status, wound_type, additional_tetanus, regular_given_severe, regular_status_severe
-FROM appointments
-WHERE patient_id = ?1
-ORDER BY schedule ASC"
-    ).map_err(|e| e.to_string())?;
-
-    let appointments = stmt
-        .query_map([patient_id], |row| {
-          Ok(Appointment {
-    id: Some(row.get(0)?),
-    patient_id: row.get(1)?,
-
-    regular_type: row.get(2).ok(),
-    regular_date: row.get(3).ok(),
-    regular_date2: row.get(4).ok(),
-    regular_date3: row.get(5).ok(),
-    regular_route: row.get(6).ok(),
-    vaccine_name: row.get(7).ok(),
-    pneumonia_type: row.get(8).ok(),
-    injection_site: row.get(9).ok(),
-
-    hepa_b_dose1: row.get(10).ok(),
-    hepa_b_dose2: row.get(11).ok(),
-    hepa_b_dose3: row.get(12).ok(),
-
-    regular_status: row.get(13).ok(),
-    regular_status2: row.get(14).ok(),
-    regular_status3: row.get(15).ok(),
-
-    hepa_b_status1: row.get(16).ok(),
-    hepa_b_status2: row.get(17).ok(),
-    hepa_b_status3: row.get(18).ok(),
-
-    regular_given_date: row.get(19).ok(),
-    regular_given_date2: row.get(20).ok(),
-    regular_given_date3: row.get(21).ok(),
-
-    hepa_b_given1: row.get(22).ok(),
-    hepa_b_given2: row.get(23).ok(),
-    hepa_b_given3: row.get(24).ok(),
-
-    schedule: row.get(25)?,
-
-    date_of_exposure: row.get(26).ok(),
-    type_of_bite: row.get(27).ok(),
-    site_of_bite: row.get(28).ok(),
-    biting_animal: row.get(29).ok(),
-    category: row.get(30).ok(),
-    previous_vaccine: row.get(31).ok(),
-    prophylaxis_type: row.get(32).ok(),
-    vaccroute: row.get(33).ok(),
-
-    tetanus_toxoid: row.get(34).ok(),
-    tetanus_route: row.get(35).ok(),
-    tetanus_date: row.get(36).ok(),
-
-    rig: match row.get::<_, Option<i64>>(37)? {
-        Some(1) => Some(true),
-        Some(0) => Some(false),
-        _ => Some(false),
-    },
-    rig_date: row.get(38).ok(),
-
-    day_zero_date: row.get(39).ok(),
-    day_three_date: row.get(40).ok(),
-    day_seven_date: row.get(41).ok(),
-    day_fourteen_date: row.get(42).ok(),
-    day_thirty_date: row.get(43).ok(),
-
-    day_zero_given_date: row.get(44).ok(),
-    day_three_given_date: row.get(45).ok(),
-    day_seven_given_date: row.get(46).ok(),
-    day_fourteen_given_date: row.get(47).ok(),
-    day_thirty_given_date: row.get(48).ok(),
-
-    schedule_status: row.get(49).ok(),
-    day_zero_status: row.get(50).ok(),
-    day_three_status: row.get(51).ok(),
-    day_seven_status: row.get(52).ok(),
-    day_fourteen_status: row.get(53).ok(),
-    day_thirty_status: row.get(54).ok(),
-    status: row.get(55).ok(),
-    wound_type: row.get(56).ok(),
-    additional_tetanus: row.get(57).ok(),
-    regular_given_severe: row.get(58).ok(),
-    regular_status_severe: row.get(59).ok(),
-})
-
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    Ok(appointments)
-}
-
-#[tauri::command]
-fn create_appointment(state: State<'_, AppState>, appointment: Appointment) -> Result<String, String> {
-    let conn = state.db.lock().unwrap();
-
-    conn.execute(
-        "INSERT INTO appointments (
-            patient_id,
-            regular_type, regular_date, regular_date2, regular_date3, regular_route, vaccine_name, pneumonia_type, injection_site, hepa_b_dose1, hepa_b_dose2, hepa_b_dose3,
-           regular_status, regular_status2, regular_status3, hepa_b_status1, hepa_b_status2,
-            hepa_b_status3, regular_given_date, regular_given_date2, regular_given_date3, hepa_b_given1, hepa_b_given2, hepa_b_given3, schedule, date_of_exposure, type_of_bite, site_of_bite, biting_animal,
-            category, previous_vaccine, prophylaxis_type, vaccroute,
-            tetanus_toxoid, tetanus_route, tetanus_date,
-            rig, rig_date, day_zero_date, day_three_date, day_seven_date,
-            day_fourteen_date, day_thirty_date,
-            day_zero_given_date, day_three_given_date, day_seven_given_date,
-            day_fourteen_given_date, day_thirty_given_date,
-            status, schedule_status,
-            day_zero_status, day_three_status, day_seven_status,
-            day_fourteen_status, day_thirty_status, wound_type, additional_tetanus, regular_given_severe,
-    regular_status_severe
-         ) VALUES (
-            ?1,  ?2,  ?3,  ?4,  ?5,  ?6, ?7,  ?8,  ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
-            ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33,
-            ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48, ?49,?50,?51,?52,?53,?54,?55,?56,?57,?58,?59
-         )",
-        params![
-            appointment.patient_id,
-            appointment.regular_type,
-            
-            appointment.regular_date,
-            appointment.regular_date2,
-            appointment.regular_date3,
-
-            appointment.regular_route,
-            appointment.vaccine_name,
-            appointment.pneumonia_type,
-            appointment.injection_site,
-
-            appointment.hepa_b_dose1,
-            appointment.hepa_b_dose2,
-            appointment.hepa_b_dose3,
-            
-            appointment.regular_status,
-            appointment.regular_status2,
-            appointment.regular_status3,
-                 
-            appointment.hepa_b_status1,     
-            appointment.hepa_b_status2,
-            appointment.hepa_b_status3, 
-            
-            appointment.regular_given_date,
-            appointment.regular_given_date2,
-            appointment.regular_given_date3,
-
-            appointment.hepa_b_given1,
-            appointment.hepa_b_given2,
-            appointment.hepa_b_given3,
-
-            appointment.schedule,
-
-            appointment.date_of_exposure,
-            appointment.type_of_bite,
-            appointment.site_of_bite,
-            appointment.biting_animal,
-
-            appointment.category,
-            appointment.previous_vaccine,
-            appointment.prophylaxis_type,
-            appointment.vaccroute,
-
-            appointment.tetanus_toxoid,
-            appointment.tetanus_route,
-            appointment.tetanus_date,
-
-            appointment.rig.unwrap_or(false),
-            appointment.rig_date,
-
-            appointment.day_zero_date,
-            appointment.day_three_date,
-            appointment.day_seven_date,
-            appointment.day_fourteen_date,
-            appointment.day_thirty_date,
-
-            appointment.day_zero_given_date,
-            appointment.day_three_given_date,
-            appointment.day_seven_given_date,
-            appointment.day_fourteen_given_date,
-            appointment.day_thirty_given_date,
-
-            appointment.status.unwrap_or("Pending".into()),
-            appointment.schedule_status.unwrap_or("Pending".into()),
-
-            appointment.day_zero_status.unwrap_or("Pending".into()),
-            appointment.day_three_status.unwrap_or("Pending".into()),
-            appointment.day_seven_status.unwrap_or("Pending".into()),
-            appointment.day_fourteen_status.unwrap_or("Pending".into()),
-            appointment.day_thirty_status.unwrap_or("Pending".into()),
-            appointment.wound_type,
-            appointment.additional_tetanus,
-            appointment.regular_given_severe,
-            appointment.regular_status_severe,
-            
-            
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-
-    Ok("Appointment created successfully".into())
-}
-
-
-
-#[tauri::command]
-fn update_appointment(state: State<'_, AppState>, appointment: Appointment) -> Result<String, String> {
-    let conn = state.db.lock().unwrap();
-    let id = appointment.id.ok_or("Appointment ID required")?;
-
-    conn.execute(
-        "UPDATE appointments SET
-            regular_type = ?1,
-            regular_date = ?2,
-            regular_date2 = ?3,
-            regular_date3 = ?4,
-            regular_route = ?5,
-            vaccine_name = ?6,
-            pneumonia_type = ?7,
-            injection_site =?8,
-
-            hepa_b_dose1 = ?9,
-            hepa_b_dose2 = ?10,
-            hepa_b_dose3 = ?11,
-
-            schedule = ?12,
-
-            date_of_exposure = ?13,
-            type_of_bite = ?14,
-            site_of_bite = ?15,
-            biting_animal = ?16,
-
-            category = ?17,
-            previous_vaccine = ?18,
-            prophylaxis_type = ?19,
-            vaccroute = ?20,
-
-            tetanus_toxoid = ?21,
-            tetanus_route = ?22,
-            tetanus_date = ?23,
-
-            rig = ?24,
-            rig_date = ?25,
-
-            day_zero_date = ?26,
-            day_three_date = ?27,
-            day_seven_date = ?28,
-            day_fourteen_date = ?29,
-            day_thirty_date = ?30,
-
-            day_zero_given_date = ?31,
-            day_three_given_date = ?32,
-            day_seven_given_date = ?33,
-            day_fourteen_given_date = ?34,
-            day_thirty_given_date = ?35,
-
-            status = ?36,
-            schedule_status = ?37,
-
-            day_zero_status = ?38,
-            day_three_status = ?39,
-            day_seven_status = ?40,
-            day_fourteen_status = ?41,
-            day_thirty_status = ?42,
-
-            regular_status = ?43,
-            regular_status2 = ?44,
-            regular_status3 =?45,
-
-            hepa_b_status1 = ?46,
-            hepa_b_status2 = ?47,
-            hepa_b_status3 = ?48,
-
-            regular_given_date = ?49,
-            regular_given_date2 = ?50,
-            regular_given_date3 = ?51,
-
-            hepa_b_given1 = ?52,
-            hepa_b_given2 = ?53,
-            hepa_b_given3 = ?54,
-
-            wound_type=?55,
-            additional_tetanus=?56,
-            regular_given_severe=?57,
-    regular_status_severe=?58
-
-        WHERE id = ?59",
-        params![
-            appointment.regular_type,
-
-            appointment.regular_date,
-            appointment.regular_date2,
-            appointment.regular_date3,
-
-            appointment.regular_route,
-            appointment.vaccine_name,
-            appointment.pneumonia_type,
-            appointment.injection_site,
-
-            appointment.hepa_b_dose1,
-            appointment.hepa_b_dose2,
-            appointment.hepa_b_dose3,
-
-            appointment.schedule,
-
-            appointment.date_of_exposure,
-            appointment.type_of_bite,
-            appointment.site_of_bite,
-            appointment.biting_animal,
-
-            appointment.category,
-            appointment.previous_vaccine,
-            appointment.prophylaxis_type,
-            appointment.vaccroute,
-
-            appointment.tetanus_toxoid,
-            appointment.tetanus_route,
-            appointment.tetanus_date,
-
-            appointment.rig.unwrap_or(false),
-            appointment.rig_date,
-
-            appointment.day_zero_date,
-            appointment.day_three_date,
-            appointment.day_seven_date,
-            appointment.day_fourteen_date,
-            appointment.day_thirty_date,
-
-            appointment.day_zero_given_date,
-            appointment.day_three_given_date,
-            appointment.day_seven_given_date,
-            appointment.day_fourteen_given_date,
-            appointment.day_thirty_given_date,
-
-            appointment.status.clone().unwrap_or("Pending".into()),
-            appointment.schedule_status.clone().unwrap_or("Pending".into()),
-
-            appointment.day_zero_status.clone().unwrap_or("Pending".into()),
-            appointment.day_three_status.clone().unwrap_or("Pending".into()),
-            appointment.day_seven_status.clone().unwrap_or("Pending".into()),
-            appointment.day_fourteen_status.clone().unwrap_or("Pending".into()),
-            appointment.day_thirty_status.clone().unwrap_or("Pending".into()),
-
-            
-            appointment.regular_status, 
-            appointment.regular_status2,
-            appointment.regular_status3,
-
-            appointment.hepa_b_status1,     
-            appointment.hepa_b_status2,    
-            appointment.hepa_b_status3, 
-            
-            appointment.regular_given_date,
-            appointment.regular_given_date2,
-            appointment.regular_given_date3,
-            
-            appointment.hepa_b_given1,
-            appointment.hepa_b_given2,
-            appointment.hepa_b_given3,
-
-            appointment.wound_type,
-            appointment.additional_tetanus,
-            appointment.regular_given_severe,
-            appointment.regular_status_severe,
-
-            id
-        ]
-    )
-    .map_err(|e| e.to_string())?;
-
-    Ok("Appointment updated successfully".into())
-}
-
-
-#[tauri::command]
-fn status_apointment_update(id: i64, field: String, value: Option<String>) -> Result<(), String> {
-    use rusqlite::params;
-
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
-
-    // Only allow these columns to be updated via this endpoint
-    let allowed_fields = [
-        "regular_given_date","regular_given_date2","regular_given_date3", "regular_status", 
-        "regular_status2", "regular_status3","regular_date", "regular_date2", "regular_date3",
-        "hepa_b_given1", "hepa_b_status1",
-        "hepa_b_given2", "hepa_b_status2",
-        "hepa_b_given3", "hepa_b_status3",
-        "day_zero_given_date", "day_zero_status",
-        "day_three_given_date", "day_three_status",
-        "day_seven_given_date", "day_seven_status",
-        "day_fourteen_given_date", "day_fourteen_status",
-        "day_thirty_given_date", "day_thirty_status",
-        "status", "schedule_status", "regular_given_severe",
-    "regular_status_severe"
-    ];
-
-    if !allowed_fields.contains(&field.as_str()) {
-        return Err(format!("Field '{}' is not updatable", field));
+    // ==================== APPOINTMENTS ====================
+
+    #[derive(Serialize, Deserialize, Debug, Clone, Default)]
+    struct Appointment {
+        pub id: Option<i32>,
+        pub patient_id: i32,
+        // Regular vaccines
+        pub regular_type: Option<String>,
+        pub regular_date: Option<String>,
+        pub regular_route: Option<String>,
+        pub vaccine_name: Option<String>,
+        pub pneumonia_type: Option<String>,
+        pub injection_site: Option<String>,
+
+        // Hepa B doses
+        pub hepa_b_dose1: Option<String>,
+        pub hepa_b_dose2: Option<String>,
+        pub hepa_b_dose3: Option<String>,
+        pub regular_status: Option<String>,
+        
+        //Statuses
+        pub hepa_b_status1: Option<String>,
+        pub hepa_b_status2: Option<String>,
+        pub hepa_b_status3: Option<String>,
+
+        pub regular_given_date: Option<String>,
+
+        // Hepa B given dates
+        pub hepa_b_given1: Option<String>,
+        pub hepa_b_given2: Option<String>,
+        pub hepa_b_given3: Option<String>,
+
+        pub schedule: String,
+        pub date_of_exposure: Option<String>,
+        pub type_of_bite: Option<String>,
+        pub site_of_bite: Option<String>,
+        pub biting_animal: Option<String>,
+        pub category: Option<String>,
+        pub previous_vaccine: Option<String>,
+        pub prophylaxis_type: Option<String>,
+        pub vaccroute: Option<String>,
+        pub tetanus_toxoid: Option<bool>,
+        pub tetanus_route: Option<String>,
+        pub tetanus_date: Option<String>,
+        pub rig: Option<bool>,
+        pub rig_date: Option<String>,
+        pub day_zero_date: Option<String>,
+        pub day_three_date: Option<String>,
+        pub day_seven_date: Option<String>,
+        pub day_fourteen_date: Option<String>,
+        pub day_thirty_date: Option<String>,
+        pub day_zero_given_date: Option<String>,
+        pub day_three_given_date: Option<String>,
+        pub day_seven_given_date: Option<String>,
+        pub day_fourteen_given_date: Option<String>,
+        pub day_thirty_given_date: Option<String>,
+        pub status: Option<String>,
+        pub schedule_status: Option<String>,
+        pub day_zero_status: Option<String>,        // ✅ Added
+        pub day_three_status: Option<String>,
+        pub day_seven_status: Option<String>,
+        pub day_fourteen_status: Option<String>,
+        pub day_thirty_status: Option<String>,
     }
 
-    // Using parametrized query but field name must be injected after validation
-    let sql = format!("UPDATE appointments SET {} = ?1 WHERE id = ?2", field);
-    conn.execute(&sql, params![value, id]).map_err(|e| e.to_string())?;
+    fn init_appointments_table(conn: &Connection) -> rusqlite::Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS appointments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_id INTEGER NOT NULL,
 
-    Ok(())
-}
+                regular_type TEXT,
+                regular_date TEXT,
+                regular_route TEXT,
+                vaccine_name TEXT,
+                pneumonia_type TEXT,
+                injection_site TEXT,
 
+                hepa_b_dose1 TEXT,
+                hepa_b_dose2 TEXT,
+                hepa_b_dose3 TEXT,
 
-#[tauri::command]
-fn delete_appointment(state: State<'_, AppState>, id: i32) -> Result<String, String> {
-    let conn = state.db.lock().unwrap();
-    conn.execute("DELETE FROM appointments WHERE id = ?1", params![id])
+                regular_status TEXT,
+                hepa_b_status1 TEXT,
+                hepa_b_status2 TEXT,
+                hepa_b_status3 TEXT,
+                
+                regular_given_date TEXT,
+                hepa_b_given1 TEXT,
+                hepa_b_given2 TEXT,
+                hepa_b_given3 TEXT,
+
+                schedule TEXT NOT NULL,
+                date_of_exposure TEXT,  
+                type_of_bite TEXT,
+                site_of_bite TEXT,
+                biting_animal TEXT,
+                category TEXT,
+                previous_vaccine TEXT,
+                prophylaxis_type TEXT,
+                vaccroute TEXT, 
+                tetanus_toxoid BOOLEAN,
+                tetanus_route TEXT,
+                tetanus_date TEXT,
+                rig BOOLEAN DEFAULT 0,
+                rig_date TEXT,
+                day_zero_date TEXT,
+                day_three_date TEXT,
+                day_seven_date TEXT,
+                day_fourteen_date TEXT,
+                day_thirty_date TEXT,
+                day_zero_given_date TEXT,
+                day_three_given_date TEXT,
+                day_seven_given_date TEXT,
+                day_fourteen_given_date TEXT,
+                day_thirty_given_date TEXT,
+                schedule_status TEXT DEFAULT 'Pending',
+                day_zero_status TEXT DEFAULT 'Pending',        -- ✅ Added
+                day_three_status TEXT DEFAULT 'Pending',
+                day_seven_status TEXT DEFAULT 'Pending',
+                day_fourteen_status TEXT DEFAULT 'Pending',
+                day_thirty_status TEXT DEFAULT 'Pending',
+                status TEXT DEFAULT 'Pending',
+                FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    #[tauri::command]
+    fn get_appointments(state: State<'_, AppState>, patient_id: i32) -> Result<Vec<Appointment>, String> {
+        let conn = state.db.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT 
+        id, patient_id,
+
+        regular_type, regular_date, regular_route, vaccine_name, pneumonia_type, injection_site,
+
+        hepa_b_dose1, hepa_b_dose2, hepa_b_dose3,
+
+        regular_status, hepa_b_status1, hepa_b_status2, hepa_b_status3,
+
+        regular_given_date, hepa_b_given1, hepa_b_given2, hepa_b_given3,
+
+        schedule, date_of_exposure, type_of_bite, site_of_bite, biting_animal,
+        category, previous_vaccine, prophylaxis_type, vaccroute, tetanus_toxoid,
+        tetanus_route, tetanus_date, rig, rig_date,
+
+        day_zero_date, day_three_date, day_seven_date,
+        day_fourteen_date, day_thirty_date,
+
+        day_zero_given_date, day_three_given_date, day_seven_given_date,
+        day_fourteen_given_date, day_thirty_given_date,
+        schedule_status, day_zero_status, day_three_status,
+        day_seven_status, day_fourteen_status, day_thirty_status, status
+    FROM appointments
+    WHERE patient_id = ?1
+    ORDER BY schedule ASC"
+        ).map_err(|e| e.to_string())?;
+
+        let appointments = stmt
+            .query_map([patient_id], |row| {
+            Ok(Appointment {
+        id: Some(row.get(0)?),
+        patient_id: row.get(1)?,
+
+        regular_type: row.get(2).ok(),
+        regular_date: row.get(3).ok(),
+        regular_route: row.get(4).ok(),
+        vaccine_name: row.get(5).ok(),
+        pneumonia_type: row.get(6).ok(),
+        injection_site: row.get(7).ok(),
+
+        hepa_b_dose1: row.get(8).ok(),
+        hepa_b_dose2: row.get(9).ok(),
+        hepa_b_dose3: row.get(10).ok(),
+
+        regular_status: row.get(11).ok(),
+        hepa_b_status1: row.get(12).ok(),
+        hepa_b_status2: row.get(13).ok(),
+        hepa_b_status3: row.get(14).ok(),
+
+        regular_given_date: row.get(15).ok(),
+        hepa_b_given1: row.get(16).ok(),
+        hepa_b_given2: row.get(17).ok(),
+        hepa_b_given3: row.get(18).ok(),
+
+        schedule: row.get(19)?,
+
+        date_of_exposure: row.get(20).ok(),
+        type_of_bite: row.get(21).ok(),
+        site_of_bite: row.get(22).ok(),
+        biting_animal: row.get(23).ok(),
+        category: row.get(24).ok(),
+        previous_vaccine: row.get(25).ok(),
+        prophylaxis_type: row.get(26).ok(),
+        vaccroute: row.get(27).ok(),
+
+        tetanus_toxoid: row.get(28).ok(),
+        tetanus_route: row.get(29).ok(),
+        tetanus_date: row.get(30).ok(),
+
+        rig: match row.get::<_, Option<i64>>(31)? {
+            Some(1) => Some(true),
+            Some(0) => Some(false),
+            _ => Some(false),
+        },
+        rig_date: row.get(32).ok(),
+
+        day_zero_date: row.get(33).ok(),
+        day_three_date: row.get(34).ok(),
+        day_seven_date: row.get(35).ok(),
+        day_fourteen_date: row.get(36).ok(),
+        day_thirty_date: row.get(37).ok(),
+
+        day_zero_given_date: row.get(38).ok(),
+        day_three_given_date: row.get(39).ok(),
+        day_seven_given_date: row.get(40).ok(),
+        day_fourteen_given_date: row.get(41).ok(),
+        day_thirty_given_date: row.get(42).ok(),
+
+        schedule_status: row.get(43).ok(),
+        day_zero_status: row.get(44).ok(),
+        day_three_status: row.get(45).ok(),
+        day_seven_status: row.get(46).ok(),
+        day_fourteen_status: row.get(47).ok(),
+        day_thirty_status: row.get(48).ok(),
+        status: row.get(49).ok(),
+    })
+
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+
+        Ok(appointments)
+    }
+
+    #[tauri::command]
+    fn create_appointment(state: State<'_, AppState>, appointment: Appointment) -> Result<String, String> {
+        let conn = state.db.lock().unwrap();
+
+        conn.execute(
+            "INSERT INTO appointments (
+                patient_id,
+                regular_type, regular_date, regular_route, vaccine_name, pneumonia_type, injection_site, hepa_b_dose1, hepa_b_dose2, hepa_b_dose3,
+            regular_status, hepa_b_status1, hepa_b_status2,
+                hepa_b_status3, regular_given_date, hepa_b_given1, hepa_b_given2, hepa_b_given3, schedule, date_of_exposure, type_of_bite, site_of_bite, biting_animal,
+                category, previous_vaccine, prophylaxis_type, vaccroute,
+                tetanus_toxoid, tetanus_route, tetanus_date,
+                rig, rig_date, day_zero_date, day_three_date, day_seven_date,
+                day_fourteen_date, day_thirty_date,
+                day_zero_given_date, day_three_given_date, day_seven_given_date,
+                day_fourteen_given_date, day_thirty_given_date,
+                status, schedule_status,
+                day_zero_status, day_three_status, day_seven_status,
+                day_fourteen_status, day_thirty_status
+            ) VALUES (
+                ?1,  ?2,  ?3,  ?4,  ?5,  ?6, ?7,  ?8,  ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
+                ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33,
+                ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48, ?49
+            )",
+            params![
+                appointment.patient_id,
+                appointment.regular_type,
+                appointment.regular_date,
+                appointment.regular_route,
+                appointment.vaccine_name,
+                appointment.pneumonia_type,
+                appointment.injection_site,
+
+                appointment.hepa_b_dose1,
+                appointment.hepa_b_dose2,
+                appointment.hepa_b_dose3,
+                
+                appointment.regular_status,     // ⭐ no default
+                appointment.hepa_b_status1,     // ⭐ no default
+                appointment.hepa_b_status2,     // ⭐ no default
+                appointment.hepa_b_status3, 
+                
+                appointment.regular_given_date,
+                appointment.hepa_b_given1,
+                appointment.hepa_b_given2,
+                appointment.hepa_b_given3,
+
+                appointment.schedule,
+
+                appointment.date_of_exposure,
+                appointment.type_of_bite,
+                appointment.site_of_bite,
+                appointment.biting_animal,
+
+                appointment.category,
+                appointment.previous_vaccine,
+                appointment.prophylaxis_type,
+                appointment.vaccroute,
+
+                appointment.tetanus_toxoid,
+                appointment.tetanus_route,
+                appointment.tetanus_date,
+
+                appointment.rig.unwrap_or(false),
+                appointment.rig_date,
+
+                appointment.day_zero_date,
+                appointment.day_three_date,
+                appointment.day_seven_date,
+                appointment.day_fourteen_date,
+                appointment.day_thirty_date,
+
+                appointment.day_zero_given_date,
+                appointment.day_three_given_date,
+                appointment.day_seven_given_date,
+                appointment.day_fourteen_given_date,
+                appointment.day_thirty_given_date,
+
+                appointment.status.unwrap_or("Pending".into()),
+                appointment.schedule_status.unwrap_or("Pending".into()),
+
+                appointment.day_zero_status.unwrap_or("Pending".into()),
+                appointment.day_three_status.unwrap_or("Pending".into()),
+                appointment.day_seven_status.unwrap_or("Pending".into()),
+                appointment.day_fourteen_status.unwrap_or("Pending".into()),
+                appointment.day_thirty_status.unwrap_or("Pending".into()),
+            
+                
+                
+            ],
+        )
         .map_err(|e| e.to_string())?;
 
-    Ok("Appointment deleted successfully".into())
-}
+        Ok("Appointment created successfully".into())
+    }
 
 
 
-       //for supabase
+    #[tauri::command]
+    fn update_appointment(state: State<'_, AppState>, appointment: Appointment) -> Result<String, String> {
+        let conn = state.db.lock().unwrap();
+        let id = appointment.id.ok_or("Appointment ID required")?;
+
+        conn.execute(
+            "UPDATE appointments SET
+                regular_type = ?1,
+                regular_date = ?2,
+                regular_route = ?3,
+                vaccine_name = ?4,
+                pneumonia_type = ?5,
+                injection_site =?6,
+
+                hepa_b_dose1 = ?7,
+                hepa_b_dose2 = ?8,
+                hepa_b_dose3 = ?9,
+
+                schedule = ?10,
+
+                date_of_exposure = ?11,
+                type_of_bite = ?12,
+                site_of_bite = ?13,
+                biting_animal = ?14,
+
+                category = ?15,
+                previous_vaccine = ?16,
+                prophylaxis_type = ?17,
+                vaccroute = ?18,
+
+                tetanus_toxoid = ?19,
+                tetanus_route = ?20,
+                tetanus_date = ?21,
+
+                rig = ?22,
+                rig_date = ?23,
+
+                day_zero_date = ?24,
+                day_three_date = ?25,
+                day_seven_date = ?26,
+                day_fourteen_date = ?27,
+                day_thirty_date = ?28,
+
+                day_zero_given_date = ?29,
+                day_three_given_date = ?30,
+                day_seven_given_date = ?31,
+                day_fourteen_given_date = ?32,
+                day_thirty_given_date = ?33,
+
+                status = ?34,
+                schedule_status = ?35,
+
+                day_zero_status = ?36,
+                day_three_status = ?37,
+                day_seven_status = ?38,
+                day_fourteen_status = ?39,
+                day_thirty_status = ?40,
+
+                regular_status = ?41,
+                hepa_b_status1 = ?42,
+                hepa_b_status2 = ?43,
+                hepa_b_status3 = ?44,
+                regular_given_date = ?45,
+                hepa_b_given1 = ?46,
+                hepa_b_given2 = ?47,
+                hepa_b_given3 = ?48
+
+
+            WHERE id = ?49",
+            params![
+                appointment.regular_type,
+                appointment.regular_date,
+                appointment.regular_route,
+                appointment.vaccine_name,
+                appointment.pneumonia_type,
+                appointment.injection_site,
+
+                appointment.hepa_b_dose1,
+                appointment.hepa_b_dose2,
+                appointment.hepa_b_dose3,
+
+                appointment.schedule,
+
+                appointment.date_of_exposure,
+                appointment.type_of_bite,
+                appointment.site_of_bite,
+                appointment.biting_animal,
+
+                appointment.category,
+                appointment.previous_vaccine,
+                appointment.prophylaxis_type,
+                appointment.vaccroute,
+
+                appointment.tetanus_toxoid,
+                appointment.tetanus_route,
+                appointment.tetanus_date,
+
+                appointment.rig.unwrap_or(false),
+                appointment.rig_date,
+
+                appointment.day_zero_date,
+                appointment.day_three_date,
+                appointment.day_seven_date,
+                appointment.day_fourteen_date,
+                appointment.day_thirty_date,
+
+                appointment.day_zero_given_date,
+                appointment.day_three_given_date,
+                appointment.day_seven_given_date,
+                appointment.day_fourteen_given_date,
+                appointment.day_thirty_given_date,
+
+                appointment.status.clone().unwrap_or("Pending".into()),
+                appointment.schedule_status.clone().unwrap_or("Pending".into()),
+
+                appointment.day_zero_status.clone().unwrap_or("Pending".into()),
+                appointment.day_three_status.clone().unwrap_or("Pending".into()),
+                appointment.day_seven_status.clone().unwrap_or("Pending".into()),
+                appointment.day_fourteen_status.clone().unwrap_or("Pending".into()),
+                appointment.day_thirty_status.clone().unwrap_or("Pending".into()),
+
+                
+                appointment.regular_status,     // ⭐ no default
+                appointment.hepa_b_status1,     // ⭐ no default
+                appointment.hepa_b_status2,     // ⭐ no default
+                appointment.hepa_b_status3, 
+                
+                appointment.regular_given_date,
+                appointment.hepa_b_given1,
+                appointment.hepa_b_given2,
+                appointment.hepa_b_given3,
+
+                id
+            ]
+        )
+        .map_err(|e| e.to_string())?;
+
+        Ok("Appointment updated successfully".into())
+    }
+
+
+    #[tauri::command]
+    fn status_apointment_update(id: i64, field: String, value: Option<String>) -> Result<(), String> {
+        use rusqlite::params;
+
+        let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+
+        // Only allow these columns to be updated via this endpoint
+        let allowed_fields = [
+            "regular_given_date", "regular_status",
+            "hepa_b_given1", "hepa_b_status1",
+            "hepa_b_given2", "hepa_b_status2",
+            "hepa_b_given3", "hepa_b_status3",
+            "day_zero_given_date", "day_zero_status",
+            "day_three_given_date", "day_three_status",
+            "day_seven_given_date", "day_seven_status",
+            "day_fourteen_given_date", "day_fourteen_status",
+            "day_thirty_given_date", "day_thirty_status",
+            "status", "schedule_status"
+        ];
+
+        if !allowed_fields.contains(&field.as_str()) {
+            return Err(format!("Field '{}' is not updatable", field));
+        }
+
+        // Using parametrized query but field name must be injected after validation
+        let sql = format!("UPDATE appointments SET {} = ?1 WHERE id = ?2", field);
+        conn.execute(&sql, params![value, id]).map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
+
+    #[tauri::command]
+    fn delete_appointment(state: State<'_, AppState>, id: i32) -> Result<String, String> {
+        let conn = state.db.lock().unwrap();
+        conn.execute("DELETE FROM appointments WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+
+        Ok("Appointment deleted successfully".into())
+    }
+
+
+    //for supabase
 
     /// run once inside init_db()
 pub fn init_online_appointments_table(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
@@ -1536,8 +1450,6 @@ fn create_appointment_with_sync(
     Ok("Appointment created & queued for sync".into())
 } 
 
-
-
     // ==================== PATIENT MEDICAL UPDATE ====================
 
     #[tauri::command]
@@ -1574,32 +1486,49 @@ fn create_appointment_with_sync(
 
     // ==================== MOBILE USER PASSWORD ====================
     #[tauri::command]
-    fn update_muser_password(
-        state: State<'_, AppState>,
-        patient_id: i64,
-        new_password: String,
-    ) -> Result<String, String> {
-        dotenv().ok();
-        let secret_key = env::var("SECRET_KEY").map_err(|e| e.to_string())?;
+fn update_muser_password(
+    state: State<'_, AppState>,
+    patient_id: i64,
+    new_password: String,
+) -> Result<String, String> {
+    dotenv().ok();
+    let secret_key = env::var("SECRET_KEY").map_err(|e| e.to_string())?;
 
-        // Encrypt plaintext password for admin viewing
-        let encrypted_password = encrypt_password(&new_password, &secret_key)?;
+    // Encrypt plaintext password for admin viewing
+    let encrypted_password = encrypt_password(&new_password, &secret_key)?;
 
-        // Hash for authentication security
-        let hashed = hash(&new_password, bcrypt::DEFAULT_COST).map_err(|e| e.to_string())?;
+    // Hash for authentication security
+    let hashed = hash(&new_password, bcrypt::DEFAULT_COST).map_err(|e| e.to_string())?;
 
-        let conn = state.db.lock().unwrap();
-        let rows = conn.execute(
-            "UPDATE musers SET password_hash = ?1, encrypted_password = ?2 WHERE patient_id = ?3",
-            params![hashed, encrypted_password, patient_id],
-        ).map_err(|e| e.to_string())?;
+    let conn = state.db.lock().unwrap();
+    let rows = conn.execute(
+        "UPDATE musers SET password_hash = ?1, encrypted_password = ?2 WHERE patient_id = ?3",
+        params![hashed, encrypted_password, patient_id],
+    ).map_err(|e| e.to_string())?;
 
-        if rows == 0 {
-            Err("No mobile user found for this patient".into())
-        } else {
-            Ok("Password updated successfully".into())
-        }
+    if rows == 0 {
+        return Err("No mobile user found for this patient".into());
     }
+
+    // Get the username from the local database
+    let mut stmt = conn
+        .prepare("SELECT username FROM musers WHERE patient_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let username: String = stmt
+        .query_row(params![patient_id], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    // Sync with Supabase
+    tokio::spawn(async move {
+        if let Err(e) = update_user_in_supabase(&username, &hashed).await {
+            eprintln!("❌ Failed to update user in Supabase: {}", e);
+        } else {
+            println!("✅ User password updated in Supabase: {}", username);
+        }
+    });
+
+    Ok("Password updated successfully".into())
+}
     // ==================== ENCRYPTION HELPERS ====================
 
     fn encrypt_password(plain: &str, key: &str) -> Result<String, String> {
@@ -1646,7 +1575,7 @@ fn create_appointment_with_sync(
         }
     }
 
-     async fn update_user_in_supabase(
+   async fn update_user_in_supabase(
     username: &str,
     password_hash: &str,
 ) -> Result<(), String> {
@@ -1677,7 +1606,8 @@ fn create_appointment_with_sync(
     Ok(())
 }
 
-   // ---------- for staff component jdajaaj  ----------
+
+    // ---------- for staff component jdajaaj  ----------
 #[tauri::command]
 async fn get_all_users(_state: State<'_, AppState>) -> Result<Vec<database::User>, String> {
     database::get_all_users_db().map_err(|e| e.to_string())
@@ -1723,22 +1653,28 @@ async fn request_verification(
 
     Ok(username)
 }
+
     // ==================== MAIN ====================
     #[tokio::main]
     async fn main() {
 
-
-                    // 1. Kill the native dialog but keep the error in the console
+                // 1. Kill the native dialog but keep the error in the console
     std::panic::set_hook(Box::new(|info| {
         eprintln!("🚨 Panic: {}", info);
         // Optionally send to front-end or telemetry here
     }));
+    
 
         dotenv().ok(); // load .env
         let secret_key = env::var("SECRET_KEY").expect("SECRET_KEY must be set in .env");
         println!("Loaded key: {}", secret_key);
 
         init_db().expect("Failed to initialize database");
+
+
+        dotenv().ok(); // load .env
+        let secret_key = env::var("SECRET_KEY").expect("SECRET_KEY must be set in .env");
+        println!("Loaded key: {}", secret_key);
 
         let conn = Connection::open(DB_PATH).expect("Failed to connect to database");
         conn.execute("PRAGMA foreign_keys = ON;", []).expect("Failed to enable foreign keys");
@@ -1809,7 +1745,7 @@ async fn request_verification(
             .invoke_handler(tauri::generate_handler![
                 register_user,
                 login_user,
-                               get_all_users,
+                get_all_users,
                 update_user_db,
                 reactivate_user,
                 get_unverified_users,
@@ -1817,6 +1753,7 @@ async fn request_verification(
                 delete_user,
                 toggle_user_status,
                 create_patient_cmd,
+                //sync_all_musers_to_supabase,
                 get_patients_cmd,
                 delete_patient,
                 get_inventory,
@@ -1831,6 +1768,7 @@ async fn request_verification(
                 create_appointment,
                 update_appointment,
                 status_apointment_update,
+                create_appointment_with_sync,
                 update_patient_medical,
                 update_muser_password,
                 archive_patient,             
@@ -1878,134 +1816,124 @@ async fn request_verification(
             Err(e) => Json(json!({ "error": e })),
         }
     }
-        
+
+    async fn api_get_appointments(Path(pid): Path<i64>) -> Json<serde_json::Value> {
+        match get_appointments_impl(pid) {
+            Ok(list) => Json(json!({ "appointments": list })),
+            Err(e) => Json(json!({ "error": e })),
+        }
+    }
 
     // helper to reuse your existing get_appointments logic
-    async fn api_get_appointments(Path(pid): Path<i64>) -> Json<serde_json::Value> {
-    match get_appointments_impl(pid) {
-        Ok(list) => Json(json!({ "appointments": list })),
-        Err(e) => Json(json!({ "error": e })),
+    fn get_appointments_impl(pid: i64) -> Result<Vec<Appointment>, String> {
+        let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+
+        let mut stmt = conn.prepare(
+            "SELECT 
+        id, patient_id,
+
+        regular_type, regular_date, regular_route, vaccine_name, pneumonia_type, injection_site,
+
+        hepa_b_dose1, hepa_b_dose2, hepa_b_dose3,
+
+        regular_status, hepa_b_status1, hepa_b_status2, hepa_b_status3,
+
+        regular_given_date, hepa_b_given1, hepa_b_given2, hepa_b_given3,
+
+        schedule, date_of_exposure, type_of_bite, site_of_bite, biting_animal,
+        category, previous_vaccine, prophylaxis_type, vaccroute, tetanus_toxoid,
+        tetanus_route, tetanus_date, rig, rig_date,
+
+        day_zero_date, day_three_date, day_seven_date,
+        day_fourteen_date, day_thirty_date,
+
+        day_zero_given_date, day_three_given_date, day_seven_given_date,
+        day_fourteen_given_date, day_thirty_given_date,
+
+        schedule_status, day_zero_status, day_three_status,
+        day_seven_status, day_fourteen_status, day_thirty_status, status
+    FROM appointments
+    WHERE patient_id = ?1
+    ORDER BY schedule ASC
+    "
+        ).map_err(|e| e.to_string())?;
+
+        let appointments = stmt
+            .query_map([pid], |row| {
+                Ok(Appointment {
+        id: Some(row.get(0)?),
+        patient_id: row.get(1)?,
+
+        regular_type: row.get(2).ok(),
+        regular_date: row.get(3).ok(),
+        regular_route: row.get(4).ok(),
+        vaccine_name: row.get(5).ok(),
+        pneumonia_type: row.get(6).ok(),
+        injection_site: row.get(7).ok(),
+
+        hepa_b_dose1: row.get(8).ok(),
+        hepa_b_dose2: row.get(9).ok(),
+        hepa_b_dose3: row.get(10).ok(),
+
+        regular_status: row.get(11).ok(),
+        hepa_b_status1: row.get(12).ok(),
+        hepa_b_status2: row.get(13).ok(),
+        hepa_b_status3: row.get(14).ok(),
+
+        regular_given_date: row.get(15).ok(),
+        hepa_b_given1: row.get(16).ok(),
+        hepa_b_given2: row.get(17).ok(),
+        hepa_b_given3: row.get(18).ok(),
+
+        schedule: row.get(19)?,
+
+        date_of_exposure: row.get(20).ok(),
+        type_of_bite: row.get(21).ok(),
+        site_of_bite: row.get(22).ok(),
+        biting_animal: row.get(23).ok(),
+        category: row.get(24).ok(),
+        previous_vaccine: row.get(25).ok(),
+        prophylaxis_type: row.get(26).ok(),
+        vaccroute: row.get(27).ok(),
+
+        tetanus_toxoid: row.get(28).ok(),
+        tetanus_route: row.get(29).ok(),
+        tetanus_date: row.get(30).ok(),
+
+        rig: match row.get::<_, Option<i64>>(31)? {
+            Some(1) => Some(true),
+            Some(0) => Some(false),
+            _ => Some(false),
+        },
+        rig_date: row.get(32).ok(),
+
+        day_zero_date: row.get(33).ok(),
+        day_three_date: row.get(34).ok(),
+        day_seven_date: row.get(35).ok(),
+        day_fourteen_date: row.get(36).ok(),
+        day_thirty_date: row.get(37).ok(),
+
+        day_zero_given_date: row.get(38).ok(),
+        day_three_given_date: row.get(39).ok(),
+        day_seven_given_date: row.get(40).ok(),
+        day_fourteen_given_date: row.get(41).ok(),
+        day_thirty_given_date: row.get(42).ok(),
+
+        schedule_status: row.get(43).ok(),
+        day_zero_status: row.get(44).ok(),
+        day_three_status: row.get(45).ok(),
+        day_seven_status: row.get(46).ok(),
+        day_fourteen_status: row.get(47).ok(),
+        day_thirty_status: row.get(48).ok(),
+        status: row.get(49).ok(),
+    })
+
+
+                })
+            
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+
+        Ok(appointments)
     }
-}
-
-// helper to reuse your existing get_appointments logic
-fn get_appointments_impl(pid: i64) -> Result<Vec<Appointment>, String> {
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
-
-    let mut stmt = conn.prepare(
-        "SELECT 
-    id, patient_id,
-
-    regular_type, regular_date, regular_date2, regular_date3, regular_route, vaccine_name, pneumonia_type, injection_site,
-
-    hepa_b_dose1, hepa_b_dose2, hepa_b_dose3,
-
-    regular_status,regular_status2, regular_status3, hepa_b_status1, hepa_b_status2, hepa_b_status3,
-
-    regular_given_date,regular_given_date2,regular_given_date3, hepa_b_given1, hepa_b_given2, hepa_b_given3,
-
-    schedule, date_of_exposure, type_of_bite, site_of_bite, biting_animal,
-    category, previous_vaccine, prophylaxis_type, vaccroute, tetanus_toxoid,
-    tetanus_route, tetanus_date, rig, rig_date,
-
-    day_zero_date, day_three_date, day_seven_date,
-    day_fourteen_date, day_thirty_date,
-
-    day_zero_given_date, day_three_given_date, day_seven_given_date,
-    day_fourteen_given_date, day_thirty_given_date,
-    schedule_status, day_zero_status, day_three_status,
-    day_seven_status, day_fourteen_status, day_thirty_status, status,wound_type, additional_tetanus, regular_given_severe, regular_status_severe
-FROM appointments
-WHERE patient_id = ?1
-ORDER BY schedule ASC"
-    ).map_err(|e| e.to_string())?;
-
-    let appointments = stmt
-        .query_map([pid], |row| {
-          Ok(Appointment {
-   id: Some(row.get(0)?),
-    patient_id: row.get(1)?,
-
-    regular_type: row.get(2).ok(),
-    regular_date: row.get(3).ok(),
-    regular_date2: row.get(4).ok(),
-    regular_date3: row.get(5).ok(),
-    regular_route: row.get(6).ok(),
-    vaccine_name: row.get(7).ok(),
-    pneumonia_type: row.get(8).ok(),
-    injection_site: row.get(9).ok(),
-
-    hepa_b_dose1: row.get(10).ok(),
-    hepa_b_dose2: row.get(11).ok(),
-    hepa_b_dose3: row.get(12).ok(),
-
-    regular_status: row.get(13).ok(),
-    regular_status2: row.get(14).ok(),
-    regular_status3: row.get(15).ok(),
-
-    hepa_b_status1: row.get(16).ok(),
-    hepa_b_status2: row.get(17).ok(),
-    hepa_b_status3: row.get(18).ok(),
-
-    regular_given_date: row.get(19).ok(),
-    regular_given_date2: row.get(20).ok(),
-    regular_given_date3: row.get(21).ok(),
-
-    hepa_b_given1: row.get(22).ok(),
-    hepa_b_given2: row.get(23).ok(),
-    hepa_b_given3: row.get(24).ok(),
-
-    schedule: row.get(25)?,
-
-    date_of_exposure: row.get(26).ok(),
-    type_of_bite: row.get(27).ok(),
-    site_of_bite: row.get(28).ok(),
-    biting_animal: row.get(29).ok(),
-    category: row.get(30).ok(),
-    previous_vaccine: row.get(31).ok(),
-    prophylaxis_type: row.get(32).ok(),
-    vaccroute: row.get(33).ok(),
-
-    tetanus_toxoid: row.get(34).ok(),
-    tetanus_route: row.get(35).ok(),
-    tetanus_date: row.get(36).ok(),
-
-    rig: match row.get::<_, Option<i64>>(37)? {
-        Some(1) => Some(true),
-        Some(0) => Some(false),
-        _ => Some(false),
-    },
-    rig_date: row.get(38).ok(),
-
-    day_zero_date: row.get(39).ok(),
-    day_three_date: row.get(40).ok(),
-    day_seven_date: row.get(41).ok(),
-    day_fourteen_date: row.get(42).ok(),
-    day_thirty_date: row.get(43).ok(),
-
-    day_zero_given_date: row.get(44).ok(),
-    day_three_given_date: row.get(45).ok(),
-    day_seven_given_date: row.get(46).ok(),
-    day_fourteen_given_date: row.get(47).ok(),
-    day_thirty_given_date: row.get(48).ok(),
-
-    schedule_status: row.get(49).ok(),
-    day_zero_status: row.get(50).ok(),
-    day_three_status: row.get(51).ok(),
-    day_seven_status: row.get(52).ok(),
-    day_fourteen_status: row.get(53).ok(),
-    day_thirty_status: row.get(54).ok(),
-    status: row.get(55).ok(),
-    wound_type: row.get(56).ok(),
-    additional_tetanus: row.get(57).ok(),
-    regular_given_severe: row.get(58).ok(),
-    regular_status_severe: row.get(59).ok(),
-})
-
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    Ok(appointments)
-}

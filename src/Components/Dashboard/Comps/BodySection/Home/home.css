@@ -84,3 +84,18 @@
 .clear-btn:hover {
   background: #dc2626;
 }
+
+.detach-btn {
+  background: #444;
+  color: #fff;
+  padding: 10px 20px;
+  border: none;
+  font-size: 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-left: 10px;
+}
+
+.detach-btn:hover {
+  background: #333;
+}

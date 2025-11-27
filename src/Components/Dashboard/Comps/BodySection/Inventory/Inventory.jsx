@@ -1,45 +1,15 @@
 import React, { useState, useEffect } from "react";
 import "./Inventory.css";
 import { VACCINES } from "../../../../../utils/vaccines";
+import { useToast } from "../../../../../utils/Toast";
 import { invoke } from "@tauri-apps/api/core";
+import { inventoryManager } from "../../../../../utils/inventoryManager";
 
-// Inventory manager singleton (other components can import inventoryManager)
-export const createInventoryManager = () => {
-  let inventoryState = null; // will hold { refresh }
 
-  return {
-    setInventoryState: (state) => {
-      inventoryState = state;
-    },
-
-    async reduceByRoute(vaccineId, route = "IM") {
-      if (!inventoryState) return console.error("Inventory manager not initialized");
-      const amount = route === "ID" ? 0.1 : 1;
-      try {
-        await invoke("change_inventory_amount", { id: vaccineId, delta: -amount });
-        if (inventoryState.refresh) await inventoryState.refresh();
-      } catch (e) {
-        console.error("Failed to reduce inventory:", e);
-      }
-    },
-
-    async addStock(vaccineId, amount = 1) {
-      if (!inventoryState) return console.error("Inventory manager not initialized");
-      try {
-        await invoke("change_inventory_amount", { id: vaccineId, delta: amount });
-        if (inventoryState.refresh) await inventoryState.refresh();
-      } catch (e) {
-        console.error("Failed to add stock:", e);
-      }
-    },
-  };
-};
-
-export const inventoryManager = createInventoryManager();
 
 export default function Inventory() {
   const [activeTab, setActiveTab] = useState("stock");
-
+  const toast = useToast();
   // stock object keyed by vaccine id
   const [stock, setStock] = useState(() => {
     const initial = {};
@@ -97,7 +67,7 @@ export default function Inventory() {
   // Add stock (UI)
   const handleAddStock = async () => {
   const amount = Number.parseFloat(newStock);
-  if (Number.isNaN(amount) || amount <= 0) return alert("Enter a positive amount");
+  if (Number.isNaN(amount) || amount <= 0) return toast.show("Enter a positive amount","warning");
 
   try {
     // persist change
@@ -108,7 +78,7 @@ export default function Inventory() {
       action: "Stock Added",
       vaccine: selectedVaccine,
       amount: amount,
-      user: "Admin",
+      user: "Rabvaxx Staff",
     });
 
     // optimistic UI update
@@ -124,7 +94,7 @@ export default function Inventory() {
         action: "Stock Added",
         vaccine: selectedVaccine,
         amount,
-        user: "Admin",
+        user: "Rabvaxx Staff",
       },
       ...prev,
     ]);
@@ -134,7 +104,7 @@ export default function Inventory() {
 
   } catch (err) {
     console.error("Failed to add stock:", err);
-    alert("Failed to add stock: " + err);
+    toast.show("Failed to add stock: " + err,"error");
   }
 };
 
@@ -160,13 +130,13 @@ export default function Inventory() {
           action: `Dose Administered (${doseType})`,
           vaccine: vaccineId,
           amount: -amount,
-          user: "Rabvaxx Staff",
+          user: "Doctor",
         },
         ...prev,
       ]);
     } catch (err) {
       console.error("Failed to log dose:", err);
-      alert("Failed to update inventory: " + err);
+      toast.show("Failed to update inventory: " + err,"error");
     }
   };
 
@@ -180,7 +150,7 @@ export default function Inventory() {
   const applyEdit = async () => {
     const id = editingVaccine;
     const newAmount = Number.parseFloat(editAmountInput);
-    if (Number.isNaN(newAmount) || newAmount < 0) return alert("Enter a valid non-negative number");
+    if (Number.isNaN(newAmount) || newAmount < 0) return toast.show("Enter a valid non-negative number","warning");
     const current = Number(stock[id] ?? 0);
     const delta = newAmount - current;
 
@@ -191,7 +161,7 @@ export default function Inventory() {
           action: "Stock Edited",
           vaccine: id,
           amount: delta,
-          user: "Admin",
+          user: "Rabvaxx Staff",
         });
       }
 
@@ -204,7 +174,7 @@ export default function Inventory() {
           action: "Stock Edited",
           vaccine: id,
           amount: delta,
-          user: "Admin",
+          user: "Rabvaxx Staff",
         },
         ...prev,
       ]);
@@ -213,7 +183,7 @@ export default function Inventory() {
       setEditAmountInput("");
     } catch (err) {
       console.error("Failed to edit stock:", err);
-      alert("Failed to edit stock: " + err);
+      toast.show("Failed to edit stock: " + err,"error");
     }
   };
 

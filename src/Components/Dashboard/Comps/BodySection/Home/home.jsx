@@ -2,11 +2,11 @@ import React, { useState, useEffect } from "react";
 import "./home.css";
 import { invoke } from "@tauri-apps/api/core";
 
-const Home = () => {
-  const [serving, setServing] = useState(1);
-  const [next, setNext] = useState(2);
 
-  // Load initial queue from backend
+const Home = () => {
+  const [serving, setServing] = useState(0);
+  const [next, setNext] = useState(1);
+
   useEffect(() => {
     invoke("get_queue").then(([srv, nxt]) => {
       setServing(srv);
@@ -14,14 +14,12 @@ const Home = () => {
     });
   }, []);
 
-  // Manual NEXT button
   const handleNext = async () => {
     const [srv, nxt] = await invoke("increment_queue");
     setServing(srv);
     setNext(nxt);
   };
 
-  // CLEAR button
   const handleClear = async () => {
     const [srv, nxt] = await invoke("clear_queue");
     setServing(srv);
@@ -50,6 +48,14 @@ const Home = () => {
         <button className="clear-btn" onClick={handleClear}>
           CLEAR
         </button>
+
+        {/* NEW BUTTON */}
+        <button
+  className="detach-btn"
+  onClick={() => invoke("open_home_window")}
+>
+  EXTEND
+</button>
       </div>
     </div>
   );

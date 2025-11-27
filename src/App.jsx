@@ -6,9 +6,9 @@ import Schedule from './Components/Dashboard/Comps/BodySection/Schedule/schedule
 import Patient from './Components/Dashboard/Comps/BodySection/Patient/Patient'
 import Scanner from './Components/Dashboard/Comps/BodySection/Scanner/Scanner'
 import Inventory from './Components/Dashboard/Comps/BodySection/Inventory/Inventory'
-import Staff from './Components/Dashboard/Comps/BodySection/Staff/Staff'
-import PatientRecDesk from './Components/Dashboard/Comps/BodySection/Patient/PatientRecDesk'
-import PatientRecDoctor from './Components/Dashboard/Comps/BodySection/Patient/PatientRecDoctor'
+import QueueOnly from './Components/Dashboard/Comps/BodySection/Home/Queueonly';
+import Staff from './Components/Dashboard/Comps/BodySection/Staff/Staff';
+import { ToastProvider } from "./utils/Toast"; 
 
 import './App.css'
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
@@ -34,6 +34,10 @@ const router = createBrowserRouter([
     path: '/unauthorized',
     element: <h1>Unauthorized Access</h1>
   },
+  {
+  path: '/queue',
+  element: <QueueOnly />
+},
 
   // ✅ Admin & Staff Dashboard
   {
@@ -51,12 +55,12 @@ const router = createBrowserRouter([
       { path: 'patient', element: <Patient /> },
       { path: 'patient/:id', element: <Patient /> },
       { path: 'scanner', element: <Scanner /> },
-      { path: 'inventory', element: <Inventory /> },
       { path: 'staff', element: <Staff /> },
-      { path: 'patientrecdesk', element: <PatientRecDesk /> },
-       { path: 'patientrecdoctor', element: <PatientRecDoctor /> },
+      { path: 'inventory', element: <Inventory /> }
+      
     ]
   },
+  
 
   // ✅ Patient Portal (own dashboard)
   {
@@ -71,7 +75,11 @@ const router = createBrowserRouter([
 ]);
 
 function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <ToastProvider>
+      <RouterProvider router={router} />
+    </ToastProvider>
+  );
 }
 
 export default App;

@@ -393,7 +393,7 @@ export default function Staff() {
 
       {showUsername && generatedUsername && (
         <div className="username-display">
-          <h4>Generated Username: {generatedUsername}</h4>
+        {/*<h4>Generated Username: {generatedUsername}</h4> */}
           <h4></h4>
         </div>
       )}
@@ -454,8 +454,8 @@ export default function Staff() {
               onChange={(e) => handleInputChange("role", e.target.value)}
               required
             >
-              <option value="doctor">Doctor</option>
-              <option value="desk">Desk</option>
+              <option value="doctor">doctor</option>
+              <option value="desk">desk</option>
             </select>
           </div>
 
@@ -505,7 +505,7 @@ export default function Staff() {
       <div className="edit-popup-overlay">
         <div className="edit-popup">
           <h3>Edit User</h3>
-
+{/*
           <label>First name</label>
           <input
             value={editForm.first_name}
@@ -522,7 +522,7 @@ export default function Staff() {
           <input
             value={editForm.last_name}
             onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
-          />
+          /> */}
 
           <label>Contact</label>
           <input
@@ -530,14 +530,14 @@ export default function Staff() {
             onChange={(e) => setEditForm({ ...editForm, contact_num: e.target.value })}
           />
 
-          <label>Role</label>
+      {/*    <label>Role</label>
           <select
             value={editForm.role}
             onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
           >
-            <option value="Doctor">Doctor</option>
-            <option value="Desk">Desk</option>
-          </select>
+            <option value="Doctor">doctor</option>
+            <option value="Desk">desk</option>
+          </select> */}
 
           <label>New Password</label>
           <input
